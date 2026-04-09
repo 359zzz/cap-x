@@ -26,6 +26,10 @@ from capx.web.models import (
     InjectPromptCommand,
     LoadConfigRequest,
     LoadConfigResponse,
+    NanobotTaskActionResponse,
+    NanobotTaskInjectRequest,
+    NanobotTaskStartRequest,
+    NanobotTaskStatusResponse,
     SessionState,
     SessionStatusResponse,
     StartTrialRequest,
@@ -34,6 +38,10 @@ from capx.web.models import (
     StopCommand,
     StopTrialRequest,
     StopTrialResponse,
+)
+from capx.web.nanobot_relay import (
+    apply_initial_instruction_to_env_factory,
+    build_nanobot_task_status,
 )
 from capx.web.session_manager import Session, get_session_manager
 
@@ -100,6 +108,140 @@ def create_app() -> FastAPI:
             "config_path": default_path,
             "auto_start": default_path is not None,
         }
+
+    def _resolve_config_path(config_path: str | None) -> str:
+        resolved = config_path or getattr(app.state, "default_config_path", None)
+        if resolved is None:
+            raise HTTPException(
+                status_code=400,
+                detail="No config_path provided and no default config is attached to the server.",
+            )
+        if not Path(resolved).exists():
+            raise HTTPException(status_code=404, detail=f"Config file not found: {resolved}")
+        return resolved
+
+    @dataclass
+    class _LoadArgs:
+        config_path: str
+        server_url: str
+        model: str
+        temperature: float
+        max_tokens: int
+        reasoning_effort: str = "medium"
+        api_key: str | None = None
+        use_visual_feedback: bool | None = None
+        use_img_differencing: bool | None = None
+        visual_differencing_model: str | None = None
+        visual_differencing_model_server_url: str | None = None
+        visual_differencing_model_api_key: str | None = None
+        total_trials: int | None = 1
+        num_workers: int | None = 1
+        record_video: bool | None = None
+        output_dir: str | None = None
+        debug: bool = False
+        use_oracle_code: bool | None = None
+        use_parallel_ensemble: bool | None = None
+        use_video_differencing: bool | None = None
+        use_wrist_camera: bool | None = None
+        use_multimodel: bool | None = None
+        web_ui: bool | None = None
+        web_ui_port: int | None = None
+
+    async def _prepare_trial_session(
+        *,
+        config_path: str,
+        model: str,
+        server_url: str,
+        temperature: float,
+        max_tokens: int,
+        use_visual_feedback: bool | None,
+        use_img_differencing: bool | None,
+        visual_differencing_model: str | None,
+        visual_differencing_model_server_url: str | None,
+        await_user_input_each_turn: bool,
+        execution_timeout: int,
+        initial_instruction: str | None = None,
+    ) -> Session:
+        manager = get_session_manager()
+        session = await manager.create_session()
+
+        try:
+            load_args = _LoadArgs(
+                config_path=config_path,
+                server_url=server_url,
+                model=model,
+                temperature=temperature,
+                max_tokens=max_tokens,
+                use_visual_feedback=use_visual_feedback,
+                use_img_differencing=use_img_differencing,
+                visual_differencing_model=visual_differencing_model,
+                visual_differencing_model_server_url=visual_differencing_model_server_url,
+            )
+            env_factory, config, _ = await asyncio.to_thread(_load_config, load_args)
+
+            if initial_instruction:
+                env_factory = apply_initial_instruction_to_env_factory(env_factory, initial_instruction)
+                config["nanobot_initial_instruction"] = initial_instruction
+
+            if config.get("output_dir"):
+                from datetime import datetime
+
+                base_dir = config["output_dir"]
+                model_slug = model.replace("/", "_")
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                new_out_dir = f"{base_dir}/{model_slug}/{timestamp}"
+                Path(new_out_dir).mkdir(parents=True, exist_ok=True)
+                config["output_dir"] = new_out_dir
+                logger.info(f"Output directory set to: {new_out_dir}")
+
+            session.config_path = config_path
+            session.config = config
+            session.env_factory = env_factory
+            session.state = SessionState.LOADING_CONFIG
+
+            trial_args = LaunchArgsCompat(
+                model=model,
+                server_url=server_url,
+                api_key=None,
+                max_tokens=max_tokens,
+                temperature=temperature,
+                reasoning_effort="medium",
+                debug=False,
+                visual_differencing_model=visual_differencing_model,
+                visual_differencing_model_server_url=visual_differencing_model_server_url,
+                visual_differencing_model_api_key=None,
+            )
+
+            session.await_user_input_each_turn = await_user_input_each_turn
+            session.execution_timeout = execution_timeout
+            session.task = asyncio.create_task(
+                run_trial_async(
+                    session=session,
+                    args=trial_args,
+                )
+            )
+            return session
+        except Exception:
+            await manager.remove_session(session.session_id)
+            raise
+
+    async def _get_session_or_404(session_id: str) -> Session:
+        manager = get_session_manager()
+        session = await manager.get_session(session_id)
+        if not session:
+            raise HTTPException(status_code=404, detail="Session not found")
+        return session
+
+    def _build_nanobot_action_response(
+        status: str,
+        session: Session,
+    ) -> NanobotTaskActionResponse:
+        task = NanobotTaskStatusResponse.model_validate(build_nanobot_task_status(session))
+        return NanobotTaskActionResponse(
+            status=status,
+            session_id=session.session_id,
+            task=task,
+        )
 
     @app.get("/api/configs", response_model=ConfigListResponse)
     async def list_configs():
@@ -179,100 +321,20 @@ def create_app() -> FastAPI:
     @app.post("/api/start-trial", response_model=StartTrialResponse)
     async def start_trial(request: StartTrialRequest):
         """Start a new trial execution."""
-        config_path = request.config_path
-
-        if not Path(config_path).exists():
-            raise HTTPException(status_code=404, detail=f"Config file not found: {config_path}")
-
-        manager = get_session_manager()
-
-        # Create new session
-        session = await manager.create_session()
-
+        config_path = _resolve_config_path(request.config_path)
         try:
-            # Build args for config loading
-            @dataclass
-            class LoadArgs:
-                config_path: str
-                server_url: str
-                model: str
-                temperature: float
-                max_tokens: int
-                reasoning_effort: str = "medium"
-                api_key: str | None = None
-                use_visual_feedback: bool | None = None
-                use_img_differencing: bool | None = None
-                visual_differencing_model: str | None = None
-                visual_differencing_model_server_url: str | None = None
-                visual_differencing_model_api_key: str | None = None
-                total_trials: int | None = 1
-                num_workers: int | None = 1
-                record_video: bool | None = None
-                output_dir: str | None = None
-                debug: bool = False
-                use_oracle_code: bool | None = None
-                use_parallel_ensemble: bool | None = None
-                use_video_differencing: bool | None = None
-                use_wrist_camera: bool | None = None
-                use_multimodel: bool | None = None
-                web_ui: bool | None = None
-                web_ui_port: int | None = None
-
-            load_args = LoadArgs(
+            session = await _prepare_trial_session(
                 config_path=config_path,
-                server_url=request.server_url,
                 model=request.model,
+                server_url=request.server_url,
                 temperature=request.temperature,
                 max_tokens=request.max_tokens,
                 use_visual_feedback=request.use_visual_feedback,
                 use_img_differencing=request.use_img_differencing,
                 visual_differencing_model=request.visual_differencing_model,
                 visual_differencing_model_server_url=request.visual_differencing_model_server_url,
-            )
-            env_factory, config, _ = await asyncio.to_thread(_load_config, load_args)
-
-            # Process output_dir like launch.py does - add model name to path and create directory
-            if config.get("output_dir"):
-                from datetime import datetime
-                # Add model name and timestamp to output path
-                base_dir = config["output_dir"]
-                model_slug = request.model.replace("/", "_")
-                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-                new_out_dir = f"{base_dir}/{model_slug}/{timestamp}"
-                Path(new_out_dir).mkdir(parents=True, exist_ok=True)
-                config["output_dir"] = new_out_dir
-                logger.info(f"Output directory set to: {new_out_dir}")
-
-            # Store in session
-            session.config_path = config_path
-            session.config = config
-            session.env_factory = env_factory
-            session.state = SessionState.LOADING_CONFIG
-
-            # Build launch args for trial runner
-            trial_args = LaunchArgsCompat(
-                model=request.model,
-                server_url=request.server_url,
-                api_key=None,
-                max_tokens=request.max_tokens,
-                temperature=request.temperature,
-                reasoning_effort="medium",
-                debug=False,
-                visual_differencing_model=request.visual_differencing_model,
-                visual_differencing_model_server_url=request.visual_differencing_model_server_url,
-                visual_differencing_model_api_key=None,
-            )
-
-            # Set the initial settings on session (can be changed during trial)
-            session.await_user_input_each_turn = request.await_user_input_each_turn
-            session.execution_timeout = request.execution_timeout
-
-            # Start trial in background task
-            session.task = asyncio.create_task(
-                run_trial_async(
-                    session=session,
-                    args=trial_args,
-                )
+                await_user_input_each_turn=request.await_user_input_each_turn,
+                execution_timeout=request.execution_timeout,
             )
 
             return StartTrialResponse(
@@ -282,8 +344,100 @@ def create_app() -> FastAPI:
 
         except Exception as e:
             logger.exception(f"Failed to start trial: {e}")
-            await manager.remove_session(session.session_id)
             raise HTTPException(status_code=400, detail=str(e))
+
+    @app.get("/api/nanobot/health")
+    async def nanobot_health():
+        """Return nanobot relay availability and the current active task, if any."""
+        manager = get_session_manager()
+        active_session = manager.get_active_session()
+        return {
+            "status": "ok",
+            "single_active_task": True,
+            "default_config_path": getattr(app.state, "default_config_path", None),
+            "active_task": (
+                build_nanobot_task_status(active_session, max_events=5)
+                if active_session is not None
+                else None
+            ),
+        }
+
+    @app.post("/api/nanobot/tasks/start", response_model=NanobotTaskActionResponse)
+    async def nanobot_start_task(request: NanobotTaskStartRequest):
+        """Start a cap-x task from a nanobot/app instruction."""
+        if not request.initial_instruction.strip():
+            raise HTTPException(status_code=400, detail="initial_instruction must not be empty")
+
+        config_path = _resolve_config_path(request.config_path)
+        try:
+            session = await _prepare_trial_session(
+                config_path=config_path,
+                model=request.model,
+                server_url=request.server_url,
+                temperature=request.temperature,
+                max_tokens=request.max_tokens,
+                use_visual_feedback=request.use_visual_feedback,
+                use_img_differencing=request.use_img_differencing,
+                visual_differencing_model=request.visual_differencing_model,
+                visual_differencing_model_server_url=request.visual_differencing_model_server_url,
+                await_user_input_each_turn=request.await_user_input_each_turn,
+                execution_timeout=request.execution_timeout,
+                initial_instruction=request.initial_instruction,
+            )
+            return _build_nanobot_action_response("started", session)
+        except Exception as e:
+            logger.exception(f"Failed to start nanobot task: {e}")
+            raise HTTPException(status_code=400, detail=str(e))
+
+    @app.get(
+        "/api/nanobot/tasks/{session_id}",
+        response_model=NanobotTaskStatusResponse,
+    )
+    async def nanobot_get_task(session_id: str):
+        """Get compact task status for nanobot/app polling."""
+        session = await _get_session_or_404(session_id)
+        return NanobotTaskStatusResponse.model_validate(build_nanobot_task_status(session))
+
+    @app.post(
+        "/api/nanobot/tasks/{session_id}/inject",
+        response_model=NanobotTaskActionResponse,
+    )
+    async def nanobot_inject_task(session_id: str, request: NanobotTaskInjectRequest):
+        """Inject follow-up guidance into an awaiting nanobot-driven task."""
+        if not request.text.strip():
+            raise HTTPException(status_code=400, detail="text must not be empty")
+
+        manager = get_session_manager()
+        await _get_session_or_404(session_id)
+        success = await manager.inject_prompt(session_id, request.text)
+        if not success:
+            raise HTTPException(
+                status_code=400,
+                detail="Cannot inject: session is not awaiting user input",
+            )
+        session = await _get_session_or_404(session_id)
+        return _build_nanobot_action_response("injected", session)
+
+    @app.post(
+        "/api/nanobot/tasks/{session_id}/stop",
+        response_model=NanobotTaskActionResponse,
+    )
+    async def nanobot_stop_task(session_id: str):
+        """Stop a nanobot-driven task."""
+        manager = get_session_manager()
+        session = await _get_session_or_404(session_id)
+        stopped = await manager.stop_session(session_id)
+        if not stopped and session.state not in (
+            SessionState.IDLE,
+            SessionState.COMPLETE,
+            SessionState.ERROR,
+        ):
+            raise HTTPException(status_code=400, detail="Failed to stop session")
+        session = await _get_session_or_404(session_id)
+        return _build_nanobot_action_response(
+            "stopped" if stopped else "already_stopped",
+            session,
+        )
 
     @app.post("/api/stop", response_model=StopTrialResponse)
     async def stop_trial(request: StopTrialRequest):

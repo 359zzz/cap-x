@@ -292,3 +292,57 @@ class SessionStatusResponse(BaseModel):
     current_block_index: int = 0
     total_code_blocks: int = 0
     num_regenerations: int = 0
+
+
+class NanobotTaskStartRequest(BaseModel):
+    """Request used by the nanobot outer shell to start a cap-x robot task."""
+
+    config_path: str | None = None
+    initial_instruction: str
+    model: str = "openai/gpt-5.4"
+    server_url: str = "http://127.0.0.1:8110/chat/completions"
+    temperature: float = 0.2
+    max_tokens: int = 8192
+    use_visual_feedback: bool | None = None
+    use_img_differencing: bool | None = None
+    visual_differencing_model: str | None = "openai/gpt-5.4"
+    visual_differencing_model_server_url: str | None = "http://127.0.0.1:8110/chat/completions"
+    await_user_input_each_turn: bool = True
+    execution_timeout: int = 180
+
+
+class NanobotTaskInjectRequest(BaseModel):
+    """Follow-up text injected by nanobot while a task is awaiting input."""
+
+    text: str
+
+
+class NanobotEventItem(BaseModel):
+    """Compact session event for chat relay polling."""
+
+    type: str
+    timestamp: str | None = None
+    summary: str
+
+
+class NanobotTaskStatusResponse(BaseModel):
+    """Compact task status for nanobot/app polling."""
+
+    session_id: str
+    state: SessionState
+    config_path: str | None = None
+    current_block_index: int = 0
+    total_code_blocks: int = 0
+    num_regenerations: int = 0
+    can_accept_injection: bool = False
+    active: bool = False
+    recent_events: list[NanobotEventItem] = Field(default_factory=list)
+    last_error: str | None = None
+
+
+class NanobotTaskActionResponse(BaseModel):
+    """Action result returned by nanobot relay endpoints."""
+
+    status: str
+    session_id: str
+    task: NanobotTaskStatusResponse | None = None

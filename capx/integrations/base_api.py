@@ -2,12 +2,13 @@ import inspect
 from abc import ABC, abstractmethod
 from collections.abc import Callable
 from functools import lru_cache
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import numpy as np
 from PIL import Image
 
-from capx.envs.base import BaseEnv
+if TYPE_CHECKING:
+    from capx.envs.base import BaseEnv
 
 
 class ApiBase(ABC):
@@ -42,7 +43,7 @@ class ApiBase(ABC):
             ...
     """
 
-    def __init__(self, env: BaseEnv) -> None:
+    def __init__(self, env: "BaseEnv") -> None:
         self._env = env
         self._webui_enabled: bool = False
 
@@ -129,7 +130,7 @@ def register_api(name: str, factory: Callable[[], ApiBase]) -> None:
 
 
 @lru_cache(maxsize=256)
-def get_api(name: str) -> Callable[[BaseEnv], ApiBase]:
+def get_api(name: str) -> Callable[["BaseEnv"], ApiBase]:
     if name not in _API_FACTORIES:
         raise KeyError(f"API '{name}' not registered")
     return _API_FACTORIES[name]

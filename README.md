@@ -179,6 +179,8 @@ uv run --no-sync --active capx/envs/launch.py \
 ./scripts/regression_test.sh test1    # Full single-turn (~3 min)
 ```
 
+For the CPU-oriented real-robot OpenArm path with nanobot relay integration, embedded HTTP app gateway, and `openarm_doctor` self-checks, see [docs/openarm-nanobot.md](docs/openarm-nanobot.md).
+
 > **Tip (BEHAVIOR):** Isaac Sim uses `OMNIGIBSON_GPU_ID` (not `CUDA_VISIBLE_DEVICES`) to select the GPU. For best performance on multi-GPU systems, run perception servers on a separate GPU (e.g. `OMNIGIBSON_GPU_ID=0` for the eval, and pre-launch SAM3/GraspNet with `CUDA_VISIBLE_DEVICES=1`). Set `OMNI_KIT_ACCEPT_EULA=YES` and `OMNIGIBSON_HEADLESS=1` for headless evaluation.
 
 ---
@@ -194,6 +196,7 @@ uv run --no-sync --active capx/envs/launch.py \
 | [BEHAVIOR Tasks](docs/behavior-tasks.md) | Setup, R1Pro tasks, expected baselines, environment variables |
 | [Development](docs/development.md) | Testing, linting, LIBERO/GraspNet setup, checkpoints, known issues |
 | [Real-World Franka Panda Bringup](docs/real-franka.md) | Bringup with robots_realtime, real-robot QuickStart |
+| [OpenArm + Nanobot QuickStart](docs/openarm-nanobot.md) | OpenArm real robot, motion asset recording, nanobot relay CLI, HTTP app gateway, doctor workflow |
 | [RL Training](docs/rl-training.md) | CaP-RL with GRPO/VeRL, sim-to-real transfer |
 | [Skill Library Compilation](scripts/skill_library_compilation/README.md) | Analyze eval outputs, compile reusable skill libraries |
 
