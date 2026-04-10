@@ -18,10 +18,9 @@ Current code status:
 
 Companion design docs now committed in-repo:
 
-- [../.codex/plans/capx-openarm-motion-v1-table.md](../.codex/plans/capx-openarm-motion-v1-table.md)
-- [../.codex/plans/capx-openarm-control-api-skill-recording-plan.md](../.codex/plans/capx-openarm-control-api-skill-recording-plan.md)
-- [../.codex/plans/capx-nanobot-robot-arch-plan.md](../.codex/plans/capx-nanobot-robot-arch-plan.md)
-- [../.codex/plans/capx-nanobot-openarm-detailed-architecture.md](../.codex/plans/capx-nanobot-openarm-detailed-architecture.md)
+- [../.codex/plans/README.md](../.codex/plans/README.md)
+
+The index page above links to the detailed motion-vocabulary, API/recording, and nanobot architecture plans.
 
 ## 0. Recommended Bring-Up Order
 

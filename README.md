@@ -50,6 +50,28 @@ uv python install 3.10 && uv venv -p 3.10
 uv sync
 ```
 
+### Public fork download
+
+If you want the public OpenArm/Nanobot fork rather than the upstream research repo, clone this repository directly:
+
+```bash
+git clone --recurse-submodules https://github.com/359zzz/cap-x.git
+cd cap-x
+```
+
+If you also want to keep syncing from the upstream official repository:
+
+```bash
+git remote add upstream https://github.com/capgym/cap-x.git
+git fetch upstream
+```
+
+If you already cloned without submodules:
+
+```bash
+git submodule update --init --recursive
+```
+
 ### Simulator-specific setup
 
 Pick **one** simulator family to install, as Robosuite (1.5.0) and LIBERO (`robosuite==1.4.0`) would be in conflict.
@@ -197,6 +219,7 @@ For the CPU-oriented real-robot OpenArm path with nanobot relay integration, emb
 | [Development](docs/development.md) | Testing, linting, LIBERO/GraspNet setup, checkpoints, known issues |
 | [Real-World Franka Panda Bringup](docs/real-franka.md) | Bringup with robots_realtime, real-robot QuickStart |
 | [OpenArm + Nanobot QuickStart](docs/openarm-nanobot.md) | OpenArm real robot, motion asset recording, nanobot relay CLI, HTTP app gateway, doctor workflow |
+| [OpenArm / Nanobot Plans Index](.codex/plans/README.md) | Public entry point for the OpenArm motion, API, recording, and nanobot architecture plan documents |
 | [RL Training](docs/rl-training.md) | CaP-RL with GRPO/VeRL, sim-to-real transfer |
 | [Skill Library Compilation](scripts/skill_library_compilation/README.md) | Analyze eval outputs, compile reusable skill libraries |
 
