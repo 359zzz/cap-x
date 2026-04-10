@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import json
 
 from capx.web.models import SessionState
@@ -7,7 +8,7 @@ from capx.web.nanobot_relay import (
     apply_initial_instruction_to_env_factory,
     build_nanobot_task_status,
 )
-from capx.web.session_manager import Session
+from capx.web.session_manager import Session, SessionManager
 
 
 def test_apply_initial_instruction_to_env_factory_is_non_mutating() -> None:
@@ -99,3 +100,19 @@ def test_build_nanobot_task_status_includes_last_error() -> None:
     assert status["active"] is False
     assert status["can_accept_injection"] is False
     assert status["last_error"] == "Perception service unavailable."
+
+
+def test_session_manager_can_reject_new_active_session() -> None:
+    async def scenario() -> None:
+        manager = SessionManager()
+        session = await manager.create_session()
+        assert session is not None
+        session.state = SessionState.RUNNING
+
+        replacement = await manager.create_session(replace_existing=False)
+
+        assert replacement is None
+        assert manager.get_active_session() is session
+        assert len(manager._sessions) == 1
+
+    asyncio.run(scenario())

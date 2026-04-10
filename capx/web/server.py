@@ -161,9 +161,12 @@ def create_app() -> FastAPI:
         await_user_input_each_turn: bool,
         execution_timeout: int,
         initial_instruction: str | None = None,
+        replace_existing: bool = True,
     ) -> Session:
         manager = get_session_manager()
-        session = await manager.create_session()
+        session = await manager.create_session(replace_existing=replace_existing)
+        if session is None:
+            raise RuntimeError("Another robot task is already active.")
 
         try:
             load_args = _LoadArgs(
@@ -368,6 +371,18 @@ def create_app() -> FastAPI:
         if not request.initial_instruction.strip():
             raise HTTPException(status_code=400, detail="initial_instruction must not be empty")
 
+        manager = get_session_manager()
+        active_session = manager.get_active_session()
+        if active_session is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=(
+                    "Another nanobot task is already active. "
+                    f"session_id={active_session.session_id}. "
+                    "Use inject or stop before starting a new task."
+                ),
+            )
+
         config_path = _resolve_config_path(request.config_path)
         try:
             session = await _prepare_trial_session(
@@ -383,8 +398,16 @@ def create_app() -> FastAPI:
                 await_user_input_each_turn=request.await_user_input_each_turn,
                 execution_timeout=request.execution_timeout,
                 initial_instruction=request.initial_instruction,
+                replace_existing=False,
             )
             return _build_nanobot_action_response("started", session)
+        except HTTPException:
+            raise
+        except RuntimeError as e:
+            if "already active" in str(e):
+                raise HTTPException(status_code=409, detail=str(e))
+            logger.exception(f"Failed to start nanobot task: {e}")
+            raise HTTPException(status_code=400, detail=str(e))
         except Exception as e:
             logger.exception(f"Failed to start nanobot task: {e}")
             raise HTTPException(status_code=400, detail=str(e))

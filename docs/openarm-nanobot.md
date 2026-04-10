@@ -16,6 +16,13 @@ Current code status:
 - `cap-x` now provides an `openarm_doctor` self-check CLI for Evo-RL path, asset, perception, and relay validation
 - the remaining work is now mainly app-specific protocol adaptation and real robot asset calibration, not core architecture bring-up
 
+Companion design docs now committed in-repo:
+
+- [../.codex/plans/capx-openarm-motion-v1-table.md](../.codex/plans/capx-openarm-motion-v1-table.md)
+- [../.codex/plans/capx-openarm-control-api-skill-recording-plan.md](../.codex/plans/capx-openarm-control-api-skill-recording-plan.md)
+- [../.codex/plans/capx-nanobot-robot-arch-plan.md](../.codex/plans/capx-nanobot-robot-arch-plan.md)
+- [../.codex/plans/capx-nanobot-openarm-detailed-architecture.md](../.codex/plans/capx-nanobot-openarm-detailed-architecture.md)
+
 ## 0. Recommended Bring-Up Order
 
 If you want the shortest path to a stable real-robot bring-up, use this order:
@@ -40,6 +47,11 @@ Important runtime assumptions:
 - only one active robot task is allowed at a time
 - the HTTP app gateway is a polling bridge, not a websocket stream
 - the main execution path is motion primitives plus combo expansion, not long trajectory replay
+
+Current limitations you should assume on a fresh clone:
+
+- the overall `cap-x` repository still contains many GPU-oriented simulator and perception dependencies; only the OpenArm path is intentionally CPU-oriented
+- `capx/assets/openarm/` ships without calibrated real-robot motion assets, so you must record anchors / primitive templates / combo templates before expecting meaningful real motion
 
 ## 1. Environment Variables
 

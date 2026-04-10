@@ -156,12 +156,23 @@ class SessionManager:
         self._sessions: dict[str, Session] = {}
         self._lock = asyncio.Lock()
 
-    async def create_session(self) -> Session:
-        """Create a new session, stopping any existing sessions first."""
+    async def create_session(self, *, replace_existing: bool = True) -> Session | None:
+        """Create a new session.
+
+        Args:
+            replace_existing: When ``True``, stop and clean up any existing
+                session first. When ``False``, return ``None`` if an active
+                session already exists.
+        """
         async with self._lock:
+            active_session = self._get_active_session_unlocked()
+            if active_session is not None and not replace_existing:
+                return None
+
             # Stop and clean up ALL existing sessions first
-            for session_id in list(self._sessions.keys()):
-                await self._cleanup_session_unlocked(session_id)
+            if replace_existing:
+                for session_id in list(self._sessions.keys()):
+                    await self._cleanup_session_unlocked(session_id)
 
             session_id = str(uuid.uuid4())
             session = Session(session_id=session_id)
@@ -284,6 +295,10 @@ class SessionManager:
         Since only one session is allowed at a time, this returns
         the single session if it exists and is still running.
         """
+        return self._get_active_session_unlocked()
+
+    def _get_active_session_unlocked(self) -> Session | None:
+        """Return the active session without taking the manager lock."""
         for session in self._sessions.values():
             if session.state in (SessionState.RUNNING, SessionState.AWAITING_USER_INPUT, SessionState.LOADING_CONFIG):
                 return session
