@@ -55,7 +55,7 @@ v1 先固定这 14 个常用锚点：
 
 注意：
 
-- 即使上游 `Evo-RL` 配置文件中的英文注释略有差异，`cap-x` 这一版也以这张映射表为准
+- 即使历史设计阶段参考过外部 `Evo-RL` 资料，`cap-x` 当前仓库实现也以这张映射表为准
 - `gripper` 不是 `joint_7`
 - `gripper` 必须直接暴露控制接口，因为后续要和你的触觉模块联动
 
@@ -586,7 +586,7 @@ capx/assets/openarm/combos/
 | --- | --- | --- |
 | 动作语义总表 | `capx/integrations/openarm/catalog.py` | 维护关节语义、原语表、组合动作表、默认锚点 |
 | 资产 schema | `capx/integrations/openarm/assets.py` | 定义 anchor / primitive / combo 资产格式与读写规则 |
-| 实机运行时 | `capx/integrations/openarm/runtime.py` | 对接 `Evo-RL` 双臂 OpenArm，执行保守关节步进与夹爪控制 |
+| 实机运行时 | `capx/integrations/openarm/runtime.py` | 对接仓库内嵌的双臂 OpenArm driver，执行保守关节步进与夹爪控制 |
 | 原语 / 组合执行器 | `capx/integrations/openarm/executor.py` | 做“找锚点 -> 选模板 -> 小步执行 -> 返回结构化结果” |
 | LLM 可调用接口 | `capx/integrations/openarm/control.py` | 暴露 `execute_motion_primitive` / `execute_motion_combo` / `open_gripper` 等函数 |
 | 手动录制器 | `capx/integrations/openarm/recording.py` | 录锚点、录原语模板、生成组合动作模板 |
@@ -596,7 +596,7 @@ capx/assets/openarm/combos/
 | web-ui / nanobot relay | `capx/web/server.py`, `capx/web/nanobot_relay.py`, `capx/cli/nanobot_task.py` | 让外部壳层通过任务接口驱动 OpenArm |
 | 内嵌 nanobot shell | `capx/nanobot/robot_shell.py`, `capx/nanobot/task_client.py`, `capx/cli/nanobot_console.py` | 在 repo 内提供第一版消息壳，用自然语言驱动 start/status/inject/stop |
 | 内嵌 nanobot gateway | `capx/nanobot/channels/*`, `capx/nanobot/runtime.py`, `capx/nanobot/gateway_app.py`, `capx/cli/nanobot_gateway.py`, `capx/cli/nanobot_http_gateway.py` | 已提供 console channel、HTTP bridge channel、gateway runtime 与 app 侧 HTTP 网关入口 |
-| 部署自检 | `capx/cli/openarm_doctor.py` | 检查 Evo-RL 路径、端口、资产、感知服务、relay 与可选实机连通性 |
+| 部署自检 | `capx/cli/openarm_doctor.py` | 检查内置 driver、`python-can`、端口、资产、感知服务、relay 与可选实机连通性 |
 | 实机默认配置 | `env_configs/openarm/openarm_motion_real.yaml` | CPU / 实机 / web-ui 的默认入口配置 |
 
 ### 11.2 原语模板和组合模板的实际落盘位置

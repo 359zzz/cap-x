@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from pathlib import Path
 from types import SimpleNamespace
 
+import capx.cli.openarm_doctor as openarm_doctor
 from capx.cli.openarm_doctor import collect_openarm_doctor_report
 from capx.integrations.openarm.runtime import OpenArmRuntimeConfig
 
@@ -42,13 +42,13 @@ class FakeRelayClient:
 
 def _runtime_stub() -> object:
     cfg = OpenArmRuntimeConfig()
-    cfg.evorl_src = Path(".")
     cfg.left_arm.port = "left-port"
     cfg.right_arm.port = "right-port"
     return SimpleNamespace(config=cfg)
 
 
-def test_openarm_doctor_report_success_path() -> None:
+def test_openarm_doctor_report_success_path(monkeypatch) -> None:
+    monkeypatch.setattr(openarm_doctor, "PYTHON_CAN_AVAILABLE", True)
     report = collect_openarm_doctor_report(
         runtime=_runtime_stub(),
         registry=FakeRegistry(),
@@ -60,7 +60,8 @@ def test_openarm_doctor_report_success_path() -> None:
     assert report["summary"]["fail_count"] == 0
 
 
-def test_openarm_doctor_report_surfaces_perception_failure() -> None:
+def test_openarm_doctor_report_surfaces_perception_failure(monkeypatch) -> None:
+    monkeypatch.setattr(openarm_doctor, "PYTHON_CAN_AVAILABLE", True)
     report = collect_openarm_doctor_report(
         runtime=_runtime_stub(),
         registry=FakeRegistry(missing=["observe_front"]),

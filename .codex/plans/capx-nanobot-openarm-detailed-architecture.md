@@ -7,7 +7,7 @@
 - `nanobot` 作为外层交互壳
 - `cap-x` 作为代码生成式机器人执行内核
 - `openclaw_realsense_agent` 作为无 GPU 感知与触觉服务
-- `Evo-RL` 作为 `OpenArm` 底层控制实现
+- 仓库内嵌的 `OpenArm` low-level driver 作为 `OpenArm` 底层控制实现
 - 动作库与动作组合封装为 LLM 可调用 API
 
 本文档当前阶段只做方案定稿，不涉及业务代码修改。
@@ -19,12 +19,12 @@
 1. 交互层：`nanobot`
 2. 编排执行层：`cap-x`
 3. 机器人能力层：`OpenArmControlApi` + `OpenArmPerceptionApi` + 动作库
-4. 底层设备层：`Evo-RL OpenArmFollower` + 本地感知服务
+4. 底层设备层：仓库内嵌 `OpenArm` driver + 本地感知服务
 
 核心原则：
 
 - 保留 `cap-x` 的 code-as-policy 主循环，不改成 tool-calling 内核
-- 不让 LLM 直接操作 `Evo-RL` 底层对象
+- 不让 LLM 直接操作 OpenArm 底层对象
 - 让 LLM 通过安全、有限、可解释的 API 来完成机器人任务
 - 优先使用动作原语和动作组合，而不是让 LLM 长篇生成底层关节控制代码
 
@@ -36,7 +36,7 @@
 2. 复用 `nanobot` 已验证的 API 调用链路和 App 交互能力。
 3. 保留 `cap-x` 的多轮代码生成、执行、反馈、再生成机制。
 4. 用你自己的感知模块替换 `cap-x` 中依赖 GPU 的视觉大模型链路。
-5. 用 `Evo-RL` 的 `OpenArm` 控制接口作为真实机器人底层。
+5. 用仓库内嵌的 `OpenArm` 控制接口作为真实机器人底层。
 6. 用动作库提高真实机器人执行的稳定性、安全性和可维护性。
 
 ### 3.2 工程约束
@@ -95,7 +95,7 @@
 - 本地感知服务
 - 可被 `cap-x API` 调用的外部能力
 
-### 4.4 Evo-RL 的角色
+### 4.4 OpenArm 内嵌低层 driver 的角色
 
 负责：
 
@@ -120,7 +120,7 @@ User/App
   -> cap-x Runtime
   -> OpenArm APIs
   -> Action Library / Perception Client
-  -> Evo-RL OpenArm + openclaw_realsense_agent
+  -> in-repo OpenArm driver + openclaw_realsense_agent
 ```
 
 ## 5.2 分层说明
@@ -173,7 +173,7 @@ User/App
 
 组件：
 
-- `Evo-RL OpenArmFollower`
+- in-repo `OpenArm` driver
 - 本地检测/深度/触觉服务
 
 职责：
@@ -253,7 +253,7 @@ User/App
 
 - 单臂链路更短
 - 动作库更容易收敛
-- 能更快验证 `nanobot + cap-x + 感知 + Evo-RL`
+- 能更快验证 `nanobot + cap-x + 感知 + OpenArm driver`
 
 ### 7.2 动作控制粒度
 
@@ -381,7 +381,7 @@ User/App
 
 职责：
 
-- 内部持有 `Evo-RL OpenArmFollower`
+- 内部持有仓库内嵌的 `OpenArm` driver
 - 提供统一观测
 - 提供基础动作执行
 - 管理连接、校准、复位、安全停机
@@ -544,7 +544,7 @@ prompt 应明确要求：
 
 范围：
 
-- 接入 `Evo-RL OpenArmFollower`
+- 接入仓库内嵌的 `OpenArm` driver
 - 接入感知服务
 - 实现基础动作库
 - 实现 `cap-x` 单臂真实机器人 API
@@ -626,7 +626,7 @@ prompt 应明确要求：
 2. `nanobot` 做外层交互壳
 3. `cap-x` 保留执行内核
 4. `openclaw_realsense_agent` 继续做本地感知服务
-5. `Evo-RL OpenArmFollower` 做底层
+5. 仓库内嵌的 `OpenArm` driver 做底层
 6. 用本地 HTTP Robot Bridge 串联 `nanobot` 和 `cap-x`
 7. 首期主打动作原语 + 动作组合，不依赖复杂 GPU 规划器
 8. 保留 `cap-x web-ui` 作为研发调试入口

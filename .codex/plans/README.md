@@ -3,7 +3,7 @@
 This page is the public entry point for the design and planning notes that were created while integrating:
 
 - `OpenArm` dual-arm real-robot control
-- `Evo-RL` low-level driver reuse
+- embedded `OpenArm` low-level driver
 - `openclaw_realsense_agent` perception and tactile reuse
 - embedded `nanobot`-style shell, relay, and HTTP app gateway inside `cap-x`
 

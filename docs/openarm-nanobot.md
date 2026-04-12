@@ -3,7 +3,7 @@
 This guide covers the current `cap-x` integration for:
 
 - `OpenArm` dual-arm real robot control
-- `Evo-RL` low-level driver reuse
+- in-repo `OpenArm` low-level CAN driver
 - `openclaw_realsense_agent` perception/tactile service reuse
 - `nanobot`-style provider, relay, shell, and HTTP app gateway integration
 - `cap-x` web UI as the execution surface
@@ -13,7 +13,7 @@ Current code status:
 - `cap-x` now contains an internal OpenArm runtime, motion asset registry, executor, recording flow, and control API
 - `cap-x` now exposes nanobot relay endpoints under `/api/nanobot/...`
 - `cap-x` now provides an embedded nanobot console shell and an embedded HTTP gateway for app-side integration
-- `cap-x` now provides an `openarm_doctor` self-check CLI for Evo-RL path, asset, perception, and relay validation
+- `cap-x` now provides an `openarm_doctor` self-check CLI for embedded driver, dependency, asset, perception, and relay validation
 - the remaining work is now mainly app-specific protocol adaptation and real robot asset calibration, not core architecture bring-up
 
 Companion design docs now committed in-repo:
@@ -57,7 +57,6 @@ Current limitations you should assume on a fresh clone:
 PowerShell example:
 
 ```powershell
-$env:CAPX_OPENARM_EVORL_SRC = 'C:\Users\zhang\Desktop\Evo-RL\src'
 $env:CAPX_OPENARM_LEFT_PORT = 'YOUR_LEFT_ARM_PORT'
 $env:CAPX_OPENARM_RIGHT_PORT = 'YOUR_RIGHT_ARM_PORT'
 $env:CAPX_OPENARM_LEFT_CAN_INTERFACE = 'socketcan'
@@ -77,8 +76,8 @@ $env:CAPX_LLM_SERVER_URL = 'http://127.0.0.1:8110/chat/completions'
 
 Notes:
 
-- `CAPX_OPENARM_EVORL_SRC` must point at the `src` directory of your `Evo-RL` checkout
-- `CAPX_OPENARM_LEFT_PORT` and `CAPX_OPENARM_RIGHT_PORT` should match the values you already use in your `Evo-RL` bringup
+- `CAPX_OPENARM_LEFT_PORT` and `CAPX_OPENARM_RIGHT_PORT` should point at the CAN channels or interfaces used by your left/right OpenArm arms
+- `python-can` is now a direct `cap-x` dependency for the embedded OpenArm low-level driver; no separate `Evo-RL` checkout is required
 - if your OpenAI-compatible upstream already supports both styles, keep `LLM_BASE_URL` and `CAPX_LLM_SERVER_URL` pointed at the same service family
 
 ## 2. Start the Perception Service
@@ -333,7 +332,8 @@ python -m capx.cli.openarm_doctor --connect-robot
 
 What it checks:
 
-- `CAPX_OPENARM_EVORL_SRC` path existence
+- embedded OpenArm low-level driver availability
+- `python-can` dependency availability
 - left/right port configuration
 - motion asset recording status
 - perception service health

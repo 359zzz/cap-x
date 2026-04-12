@@ -2,11 +2,11 @@ from __future__ import annotations
 
 import argparse
 import json
-import sys
 from pathlib import Path
 from typing import Any
 
 from capx.integrations.openarm.assets import OpenArmMotionAssetRegistry
+from capx.integrations.openarm.driver import PYTHON_CAN_AVAILABLE
 from capx.integrations.openarm.perception_adapter import (
     OpenClawPerceptionConfig,
     OpenClawServiceAdapter,
@@ -52,15 +52,28 @@ def collect_openarm_doctor_report(
 
     checks: list[dict[str, Any]] = []
 
-    evorl_src = Path(cfg.evorl_src)
-    if evorl_src.exists():
-        checks.append(_ok("evorl_src", f"Found Evo-RL source path: {evorl_src}", {"path": str(evorl_src)}))
+    checks.append(
+        _ok(
+            "openarm_driver",
+            "Using the in-repo OpenArm low-level driver stack.",
+            {"driver": "capx.integrations.openarm.driver", "embedded": True},
+        )
+    )
+
+    if PYTHON_CAN_AVAILABLE:
+        checks.append(
+            _ok(
+                "python_can",
+                "python-can is available for the in-repo OpenArm low-level driver.",
+                {"driver": "capx.integrations.openarm.driver", "embedded": True},
+            )
+        )
     else:
         checks.append(
             _fail(
-                "evorl_src",
-                "Evo-RL source path not found. Set CAPX_OPENARM_EVORL_SRC correctly.",
-                {"path": str(evorl_src)},
+                "python_can",
+                "python-can is missing. Install cap-x dependencies so the in-repo OpenArm driver can talk to CAN hardware.",
+                {"driver": "capx.integrations.openarm.driver", "embedded": True},
             )
         )
 

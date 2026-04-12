@@ -54,6 +54,7 @@ dependencies = [
   "opencv-python-headless",
   "pillow>=10",
   "cloudpickle",
+  "python-can>=4.2,<5",
 ]
 
 [project.optional-dependencies]

@@ -11,7 +11,7 @@
 - 优先动作原语，小步闭环
 - 受限关节控制只作为辅助手段
 - 录制能力也要集成到 `cap-x`
-- `nanobot`、`Evo-RL` 所需模块最终集成进 `cap-x`，但内部保持解耦
+- `nanobot`、OpenArm 低层控制所需模块最终集成进 `cap-x`，但内部保持解耦
 
 本文重点回答四件事：
 
@@ -83,7 +83,7 @@
 
 这层的职责是：
 
-- 封装从 `Evo-RL` 集成进来的双臂 `OpenArm` 控制代码
+- 封装仓库内嵌的双臂 `OpenArm` 控制代码
 - 屏蔽 CAN、设备连接、观测读取、动作发送
 - 统一录制、回放、状态读取
 
@@ -130,7 +130,7 @@
 说明：
 
 - 这层是硬件运行时层，不建议直接让 LLM 调
-- 其中 `send_joint_positions()` 可复用 `Evo-RL` 的 action schema，例如双臂 `left_joint_i.pos` / `right_joint_i.pos`
+- 其中 `send_joint_positions()` 继续沿用双臂 `left_joint_i.pos` / `right_joint_i.pos` 这类 action schema
 
 ### 4.2 L1：受限控制层，可少量暴露给 LLM
 
@@ -587,7 +587,7 @@
 
 建议首期最重视模式 1、模式 2、模式 3。
 
-## 10.3 可复用 Evo-RL 的哪些部分
+## 10.3 当前内嵌 driver 继承了哪些低层思路
 
 可优先复用并集成的内容：
 

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import contextlib
 import os
-import sys
 import threading
 import time
 from dataclasses import dataclass, field
@@ -12,6 +11,11 @@ from typing import Any
 import numpy as np
 
 from .catalog import MAGNITUDE_TO_GRIPPER_FRACTION
+from .driver import (
+    BiOpenArmFollower,
+    BiOpenArmFollowerConfig,
+    OpenArmFollowerConfig,
+)
 from .perception_adapter import OpenClawPerceptionConfig, OpenClawServiceAdapter
 
 
@@ -36,9 +40,6 @@ class ArmConnectionConfig:
 
 @dataclass
 class OpenArmRuntimeConfig:
-    evorl_src: Path = Path(
-        os.getenv("CAPX_OPENARM_EVORL_SRC", r"C:\Users\zhang\Desktop\Evo-RL\src")
-    )
     robot_id: str = os.getenv("CAPX_OPENARM_ROBOT_ID", "capx_openarm")
     calibration_dir: Path | None = (
         Path(os.environ["CAPX_OPENARM_CALIBRATION_DIR"])
@@ -75,7 +76,7 @@ class OpenArmRuntimeConfig:
     )
 
 
-class EvoRLBiOpenArmDriver:
+class InRepoBiOpenArmDriver:
     def __init__(self, config: OpenArmRuntimeConfig) -> None:
         self.config = config
         self._robot: Any | None = None
@@ -114,14 +115,9 @@ class EvoRLBiOpenArmDriver:
     def _ensure_robot(self) -> None:
         if self._robot is not None:
             return
-        self._ensure_source_path()
-        from lerobot.robots.bi_openarm_follower import BiOpenArmFollower
-        from lerobot.robots.bi_openarm_follower.config_bi_openarm_follower import (
-            BiOpenArmFollowerConfig,
-        )
-        from lerobot.robots.openarm_follower import OpenArmFollowerConfig
-
         left_cfg = OpenArmFollowerConfig(
+            id=f"{self.config.robot_id}_left",
+            calibration_dir=self.config.calibration_dir,
             port=self.config.left_arm.port,
             side="left",
             can_interface=self.config.left_arm.can_interface,
@@ -132,6 +128,8 @@ class EvoRLBiOpenArmDriver:
             cameras=self.config.left_arm.cameras,
         )
         right_cfg = OpenArmFollowerConfig(
+            id=f"{self.config.robot_id}_right",
+            calibration_dir=self.config.calibration_dir,
             port=self.config.right_arm.port,
             side="right",
             can_interface=self.config.right_arm.can_interface,
@@ -149,22 +147,16 @@ class EvoRLBiOpenArmDriver:
         )
         self._robot = BiOpenArmFollower(robot_cfg)
 
-    def _ensure_source_path(self) -> None:
-        src_path = str(self.config.evorl_src)
-        if src_path not in sys.path:
-            sys.path.insert(0, src_path)
-
-
 class OpenArmRuntime:
     def __init__(
         self,
         config: OpenArmRuntimeConfig | None = None,
         *,
-        driver: EvoRLBiOpenArmDriver | None = None,
+        driver: InRepoBiOpenArmDriver | None = None,
         perception: OpenClawServiceAdapter | None = None,
     ) -> None:
         self.config = config or OpenArmRuntimeConfig()
-        self.driver = driver or EvoRLBiOpenArmDriver(self.config)
+        self.driver = driver or InRepoBiOpenArmDriver(self.config)
         self.perception = perception or OpenClawServiceAdapter(self.config.perception)
         self._task_lock = threading.RLock()
         self._task_state = "IDLE"
