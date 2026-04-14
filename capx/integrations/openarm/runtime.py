@@ -19,6 +19,14 @@ from .driver import (
 from .perception_adapter import OpenClawPerceptionConfig, OpenClawServiceAdapter
 
 
+_SPEED_TO_DEG_PER_S = {
+    "slow": 10.0,
+    "normal": 18.0,
+    "medium": 22.0,
+    "fast": 38.0,
+}
+
+
 def _env_flag(name: str, default: bool) -> bool:
     value = os.getenv(name)
     if value is None:
@@ -52,6 +60,17 @@ class OpenArmRuntimeConfig:
     command_timeout_s: float = float(os.getenv("CAPX_OPENARM_COMMAND_TIMEOUT_S", "6.0"))
     step_sleep_s: float = float(os.getenv("CAPX_OPENARM_STEP_SLEEP_S", "0.05"))
     max_step_delta_deg: float = float(os.getenv("CAPX_OPENARM_MAX_STEP_DELTA_DEG", "8.0"))
+    interpolation_profile: str = os.getenv("CAPX_OPENARM_INTERPOLATION_PROFILE", "quintic")
+    min_trajectory_duration_s: float = float(
+        os.getenv("CAPX_OPENARM_MIN_TRAJECTORY_DURATION_S", "0.25")
+    )
+    max_trajectory_duration_s: float = float(
+        os.getenv("CAPX_OPENARM_MAX_TRAJECTORY_DURATION_S", "4.0")
+    )
+    slow_velocity_deg_s: float = float(os.getenv("CAPX_OPENARM_SLOW_VELOCITY_DEG_S", "10.0"))
+    normal_velocity_deg_s: float = float(os.getenv("CAPX_OPENARM_NORMAL_VELOCITY_DEG_S", "18.0"))
+    medium_velocity_deg_s: float = float(os.getenv("CAPX_OPENARM_MEDIUM_VELOCITY_DEG_S", "22.0"))
+    fast_velocity_deg_s: float = float(os.getenv("CAPX_OPENARM_FAST_VELOCITY_DEG_S", "38.0"))
     joint_limit_margin_deg: float = float(os.getenv("CAPX_OPENARM_JOINT_MARGIN_DEG", "5.0"))
     left_arm: ArmConnectionConfig = field(
         default_factory=lambda: ArmConnectionConfig(
@@ -220,10 +239,8 @@ class OpenArmRuntime:
         return structured
 
     def get_arm_joint_positions(self, arm: str) -> dict[str, float]:
-        arm_key = f"{arm}_arm"
         obs = self.get_observation()
-        joints = obs.get(arm_key, {}).get("joint_pos", {})
-        return {str(k): float(v) for k, v in joints.items()}
+        return self._extract_arm_joint_positions(obs, arm)
 
     def move_arm_joints_blocking(
         self,
@@ -233,27 +250,33 @@ class OpenArmRuntime:
         speed: str = "slow",
         timeout_s: float | None = None,
     ) -> dict[str, float]:
-        del speed
         self.ensure_connected()
         timeout_s = timeout_s or self.config.command_timeout_s
         current = self.get_arm_joint_positions(arm)
-        steps = self._compute_step_count(current, target_joints)
+        if not target_joints:
+            return current
+
+        target_joints = {joint: float(value) for joint, value in target_joints.items()}
+        if self._compute_max_joint_delta(current, target_joints) <= 1e-6:
+            return current
+
         arm_prefix = f"{arm}_"
-        for step_index in range(1, steps + 1):
-            alpha = step_index / steps
-            step_targets = {
-                joint: float(current.get(joint, 0.0) + alpha * (target - current.get(joint, 0.0)))
-                for joint, target in target_joints.items()
-            }
+        waypoints = self._build_interpolated_waypoints(
+            current=current,
+            target=target_joints,
+            speed=speed,
+            timeout_s=timeout_s,
+        )
+        started = time.monotonic()
+        for step_index, step_targets in enumerate(waypoints):
             action = {
-                f"{arm_prefix}{joint}.pos": float(
-                    step_targets[joint]
-                )
-                for joint in target_joints
+                f"{arm_prefix}{joint}.pos": float(step_targets[joint]) for joint in target_joints
             }
             self.driver.send_action(action)
-            self._wait_until_arm_close(arm, step_targets, timeout_s=min(timeout_s, 1.0))
-            time.sleep(self.config.step_sleep_s)
+            if step_index < len(waypoints) - 1:
+                time.sleep(self._step_interval_s())
+        remaining_timeout = max(self._step_interval_s(), timeout_s - (time.monotonic() - started))
+        self._wait_until_arm_close(arm, target_joints, timeout_s=remaining_timeout)
         return self.get_arm_joint_positions(arm)
 
     def move_both_arms_blocking(
@@ -264,30 +287,30 @@ class OpenArmRuntime:
         speed: str = "slow",
         timeout_s: float | None = None,
     ) -> dict[str, dict[str, float]]:
-        del speed
         self.ensure_connected()
         timeout_s = timeout_s or self.config.command_timeout_s
         left_current = self.get_arm_joint_positions("left")
         right_current = self.get_arm_joint_positions("right")
-        steps = max(
-            self._compute_step_count(left_current, left_joints),
-            self._compute_step_count(right_current, right_joints),
+        left_joints = {joint: float(value) for joint, value in left_joints.items()}
+        right_joints = {joint: float(value) for joint, value in right_joints.items()}
+        combined_max_delta = max(
+            self._compute_max_joint_delta(left_current, left_joints),
+            self._compute_max_joint_delta(right_current, right_joints),
         )
+        if combined_max_delta <= 1e-6:
+            return {"left": left_current, "right": right_current}
+
+        steps = self._compute_trajectory_step_count(
+            current_sets=(left_current, right_current),
+            target_sets=(left_joints, right_joints),
+            speed=speed,
+            timeout_s=timeout_s,
+        )
+        started = time.monotonic()
         for step_index in range(1, steps + 1):
-            alpha = step_index / steps
-            left_step_targets = {
-                joint: float(
-                    left_current.get(joint, 0.0) + alpha * (target - left_current.get(joint, 0.0))
-                )
-                for joint, target in left_joints.items()
-            }
-            right_step_targets = {
-                joint: float(
-                    right_current.get(joint, 0.0)
-                    + alpha * (target - right_current.get(joint, 0.0))
-                )
-                for joint, target in right_joints.items()
-            }
+            alpha = self._interpolation_alpha(step_index / steps)
+            left_step_targets = self._interpolate_joint_targets(left_current, left_joints, alpha)
+            right_step_targets = self._interpolate_joint_targets(right_current, right_joints, alpha)
             action: dict[str, float] = {}
             action.update(
                 {
@@ -300,11 +323,14 @@ class OpenArmRuntime:
                 }
             )
             self.driver.send_action(action)
-            if left_step_targets:
-                self._wait_until_arm_close("left", left_step_targets, timeout_s=min(timeout_s, 1.0))
-            if right_step_targets:
-                self._wait_until_arm_close("right", right_step_targets, timeout_s=min(timeout_s, 1.0))
-            time.sleep(self.config.step_sleep_s)
+            if step_index < steps:
+                time.sleep(self._step_interval_s())
+        remaining_timeout = max(self._step_interval_s(), timeout_s - (time.monotonic() - started))
+        self._wait_until_both_arms_close(
+            left_target_joints=left_joints,
+            right_target_joints=right_joints,
+            timeout_s=remaining_timeout,
+        )
         return {
             "left": self.get_arm_joint_positions("left"),
             "right": self.get_arm_joint_positions("right"),
@@ -361,11 +387,107 @@ class OpenArmRuntime:
         current: dict[str, float],
         target: dict[str, float],
     ) -> int:
-        max_delta = 0.0
-        for joint, target_value in target.items():
-            max_delta = max(max_delta, abs(target_value - current.get(joint, target_value)))
+        max_delta = self._compute_max_joint_delta(current, target)
         step_count = int(np.ceil(max_delta / max(self.config.max_step_delta_deg, 1.0)))
         return max(1, step_count)
+
+    def _compute_max_joint_delta(
+        self,
+        current: dict[str, float],
+        target: dict[str, float],
+    ) -> float:
+        max_delta = 0.0
+        for joint, target_value in target.items():
+            max_delta = max(max_delta, abs(float(target_value) - float(current.get(joint, target_value))))
+        return max_delta
+
+    def _step_interval_s(self) -> float:
+        return max(self.config.step_sleep_s, 0.001)
+
+    def _resolve_speed_deg_per_s(self, speed: str) -> float:
+        normalized = speed.strip().lower()
+        default_speed = self.config.default_speed.strip().lower()
+        table = {
+            **_SPEED_TO_DEG_PER_S,
+            "slow": self.config.slow_velocity_deg_s,
+            "normal": self.config.normal_velocity_deg_s,
+            "medium": self.config.medium_velocity_deg_s,
+            "fast": self.config.fast_velocity_deg_s,
+        }
+        return float(table.get(normalized, table.get(default_speed, table["slow"])))
+
+    def _resolve_trajectory_duration_s(
+        self,
+        max_delta_deg: float,
+        *,
+        speed: str,
+        timeout_s: float,
+    ) -> float:
+        if max_delta_deg <= 1e-6:
+            return self._step_interval_s()
+        speed_deg_s = max(self._resolve_speed_deg_per_s(speed), 1.0)
+        duration = max_delta_deg / speed_deg_s
+        duration = max(duration, self.config.min_trajectory_duration_s)
+        duration = min(duration, self.config.max_trajectory_duration_s)
+        settle_budget = min(1.0, max(self._step_interval_s(), timeout_s * 0.2))
+        trajectory_budget = max(self._step_interval_s(), timeout_s - settle_budget)
+        return min(duration, trajectory_budget)
+
+    def _compute_trajectory_step_count(
+        self,
+        *,
+        current_sets: tuple[dict[str, float], ...],
+        target_sets: tuple[dict[str, float], ...],
+        speed: str,
+        timeout_s: float,
+    ) -> int:
+        max_delta = max(
+            self._compute_max_joint_delta(current, target)
+            for current, target in zip(current_sets, target_sets, strict=True)
+        )
+        min_steps = max(
+            self._compute_step_count(current, target)
+            for current, target in zip(current_sets, target_sets, strict=True)
+        )
+        duration_s = self._resolve_trajectory_duration_s(max_delta, speed=speed, timeout_s=timeout_s)
+        timed_steps = int(np.ceil(duration_s / self._step_interval_s()))
+        return max(1, min_steps, timed_steps)
+
+    def _interpolation_alpha(self, ratio: float) -> float:
+        ratio = float(np.clip(ratio, 0.0, 1.0))
+        if self.config.interpolation_profile.strip().lower() == "linear":
+            return ratio
+        return 10.0 * ratio**3 - 15.0 * ratio**4 + 6.0 * ratio**5
+
+    def _interpolate_joint_targets(
+        self,
+        current: dict[str, float],
+        target: dict[str, float],
+        alpha: float,
+    ) -> dict[str, float]:
+        return {
+            joint: float(current.get(joint, 0.0) + alpha * (target_value - current.get(joint, 0.0)))
+            for joint, target_value in target.items()
+        }
+
+    def _build_interpolated_waypoints(
+        self,
+        *,
+        current: dict[str, float],
+        target: dict[str, float],
+        speed: str,
+        timeout_s: float,
+    ) -> list[dict[str, float]]:
+        steps = self._compute_trajectory_step_count(
+            current_sets=(current,),
+            target_sets=(target,),
+            speed=speed,
+            timeout_s=timeout_s,
+        )
+        return [
+            self._interpolate_joint_targets(current, target, self._interpolation_alpha(step_index / steps))
+            for step_index in range(1, steps + 1)
+        ]
 
     def _wait_until_arm_close(
         self,
@@ -383,8 +505,44 @@ class OpenArmRuntime:
             ]
             if not errors or max(errors) <= self.config.move_tolerance_deg:
                 return
-            time.sleep(self.config.step_sleep_s)
+            time.sleep(self._step_interval_s())
         raise TimeoutError(f"Timed out waiting for {arm} joints to reach target {target_joints}")
+
+    def _wait_until_both_arms_close(
+        self,
+        *,
+        left_target_joints: dict[str, float],
+        right_target_joints: dict[str, float],
+        timeout_s: float,
+    ) -> None:
+        deadline = time.monotonic() + timeout_s
+        while time.monotonic() < deadline:
+            obs = self.get_observation()
+            left_current = self._extract_arm_joint_positions(obs, "left")
+            right_current = self._extract_arm_joint_positions(obs, "right")
+            left_errors = [
+                abs(left_current.get(joint, target) - target)
+                for joint, target in left_target_joints.items()
+            ]
+            right_errors = [
+                abs(right_current.get(joint, target) - target)
+                for joint, target in right_target_joints.items()
+            ]
+            if (
+                (not left_errors or max(left_errors) <= self.config.move_tolerance_deg)
+                and (not right_errors or max(right_errors) <= self.config.move_tolerance_deg)
+            ):
+                return
+            time.sleep(self._step_interval_s())
+        raise TimeoutError(
+            "Timed out waiting for both arms to reach targets "
+            f"left={left_target_joints} right={right_target_joints}"
+        )
+
+    def _extract_arm_joint_positions(self, obs: dict[str, Any], arm: str) -> dict[str, float]:
+        arm_key = f"{arm}_arm"
+        joints = obs.get(arm_key, {}).get("joint_pos", {})
+        return {str(k): float(v) for k, v in joints.items()}
 
     def _structure_observation(self, flat_obs: dict[str, Any]) -> dict[str, Any]:
         structured: dict[str, Any] = {
