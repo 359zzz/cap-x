@@ -1,0 +1,14 @@
+# Suggested commands
+- Init submodules: `git submodule update --init --recursive`
+- Base env install (if submodules are populated): `uv sync`
+- Start OpenArm perception service from external repo: `uvicorn app.service.main:app --host 127.0.0.1 --port 8000`
+- Launch OpenArm web UI/relay: `uv run --no-sync --active capx/envs/launch.py --config-path env_configs/openarm/openarm_motion_real.yaml --model <MODEL> --server-url <CHAT_COMPLETIONS_URL>`
+- Doctor: `python -m capx.cli.openarm_doctor`
+- Asset status: `python -m capx.cli.openarm_assets status`
+- Record anchor: `python -m capx.cli.openarm_assets record-anchor <NAME> --arm-mode single --arm left`
+- Record primitive: `python -m capx.cli.openarm_assets record-primitive left raise_upper_arm medium left_neutral_ready --end-region-hint left_front_mid`
+- Bootstrap combos: `python -m capx.cli.openarm_assets bootstrap-combos --overwrite`
+- Relay health: `python -m capx.cli.nanobot_task health`
+- Console shell: `python -m capx.cli.nanobot_console --server http://127.0.0.1:8200 --config-path env_configs/openarm/openarm_motion_real.yaml --model <MODEL> --llm-server-url <CHAT_COMPLETIONS_URL>`
+- HTTP gateway: `python -m capx.cli.nanobot_http_gateway --host 127.0.0.1 --port 8300 --server http://127.0.0.1:8200 --config-path env_configs/openarm/openarm_motion_real.yaml --model <MODEL> --llm-server-url <CHAT_COMPLETIONS_URL>`
+- Targeted tests (once pytest is available and uv works): `pytest tests/test_openarm_motion.py tests/test_openarm_doctor.py tests/test_nanobot_relay.py tests/test_nanobot_robot_shell.py tests/test_nanobot_http_gateway.py tests/test_nanobot_channel_manager.py -q`

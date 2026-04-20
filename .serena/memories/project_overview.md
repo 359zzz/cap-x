@@ -1,0 +1,6 @@
+# cap-x overview
+- Purpose: Modified fork of CaP-X focused on a CPU-oriented OpenArm real-robot path with embedded nanobot relay/shell/gateway and Evo-RL low-level driver reuse.
+- Core stack: Python, FastAPI, uvicorn, requests, Gymnasium-style env/task abstraction, OpenAI-compatible LLM calls, OpenArm runtime/executor/assets, nanobot message bus/channels.
+- Major code areas: `capx/envs` (launch/trial/tasks/simulators), `capx/integrations/openarm` (runtime, executor, assets, recording, perception adapter), `capx/web` (web UI server, async trial runner, session manager, nanobot relay), `capx/nanobot` (embedded shell/runtime/gateway), `capx/cli` (doctor/assets/provider/task/gateway commands), `docs/openarm-nanobot.md` and `.codex/plans/*`.
+- Real-robot path: `env_configs/openarm/openarm_motion_real.yaml` -> `OpenArmMotionCodeEnv` -> `OpenArmControlApi` -> `OpenArmMotionExecutor` -> `OpenArmRuntime` -> Evo-RL OpenArm + OpenClaw HTTP perception service.
+- Constraints: repo still contains GPU-oriented deps overall; OpenArm path is the CPU-oriented path, not the whole repo. Fresh clone ships without calibrated OpenArm assets.
