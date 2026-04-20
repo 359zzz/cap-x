@@ -157,6 +157,7 @@ class ImageAnalysisEvent(WSEventBase):
     analysis_type: str  # "initial_description" or "state_comparison"
     content: str
     model_used: str | None = None
+    images: list[str] = Field(default_factory=list)
 
 
 class UserPromptRequestEvent(WSEventBase):
@@ -299,6 +300,7 @@ class NanobotTaskStartRequest(BaseModel):
 
     config_path: str | None = None
     initial_instruction: str
+    initial_media: list[str] = Field(default_factory=list)
     model: str = "openai/gpt-5.4"
     server_url: str = "http://127.0.0.1:8110/chat/completions"
     temperature: float = 0.2
@@ -315,6 +317,7 @@ class NanobotTaskInjectRequest(BaseModel):
     """Follow-up text injected by nanobot while a task is awaiting input."""
 
     text: str
+    media: list[str] = Field(default_factory=list)
 
 
 class NanobotEventItem(BaseModel):
@@ -323,6 +326,7 @@ class NanobotEventItem(BaseModel):
     type: str
     timestamp: str | None = None
     summary: str
+    media: list[str] = Field(default_factory=list)
 
 
 class NanobotTaskStatusResponse(BaseModel):

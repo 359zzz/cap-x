@@ -84,8 +84,8 @@ def create_gateway_app(
 
     @app.post("/channels/http/inbound", response_model=HttpBridgeActionResponse)
     async def inbound_message(request: HttpBridgeInboundRequest) -> HttpBridgeActionResponse:
-        if not request.content.strip():
-            raise HTTPException(status_code=400, detail="content must not be empty")
+        if not request.content.strip() and not request.media:
+            raise HTTPException(status_code=400, detail="content or media must not be empty")
         channel = _get_http_channel()
         await channel.receive_message(
             chat_id=request.chat_id,

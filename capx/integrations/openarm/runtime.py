@@ -91,6 +91,11 @@ class OpenArmRuntimeConfig:
             base_url=os.getenv("CAPX_OPENARM_PERCEPTION_BASE_URL", "http://127.0.0.1:8000"),
             timeout_s=float(os.getenv("CAPX_OPENARM_PERCEPTION_TIMEOUT_S", "3.0")),
             enabled=_env_flag("CAPX_OPENARM_PERCEPTION_ENABLED", True),
+            health_path=os.getenv("CAPX_OPENARM_PERCEPTION_HEALTH_PATH", "/health"),
+            tactile_health_path=os.getenv("CAPX_OPENARM_TACTILE_HEALTH_PATH", "/tactile/health"),
+            tactile_read_path=os.getenv("CAPX_OPENARM_TACTILE_READ_PATH", "/tactile/read"),
+            detect_path=os.getenv("CAPX_OPENARM_DETECT_PATH", "/detect_once"),
+            describe_path=os.getenv("CAPX_OPENARM_DESCRIBE_PATH", "/describe_once"),
         )
     )
 
@@ -380,6 +385,10 @@ class OpenArmRuntime:
 
     def detect_target(self, target_name: str | None, *, top_k: int = 3) -> dict[str, Any]:
         self._latest_detection = self.perception.detect_once(target_name, top_k=top_k)
+        return dict(self._latest_detection)
+
+    def describe_scene(self, prompt: str | None = None) -> dict[str, Any]:
+        self._latest_detection = self.perception.describe_once(prompt)
         return dict(self._latest_detection)
 
     def _compute_step_count(

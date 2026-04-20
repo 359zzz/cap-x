@@ -102,6 +102,31 @@ def test_build_nanobot_task_status_includes_last_error() -> None:
     assert status["last_error"] == "Perception service unavailable."
 
 
+def test_build_nanobot_task_status_includes_image_analysis_media() -> None:
+    image = "data:image/png;base64,abc123"
+    session = Session(
+        session_id="session-3",
+        state=SessionState.AWAITING_USER_INPUT,
+        config_path="env_configs/openarm/openarm_motion_real.yaml",
+    )
+    session.event_history = [
+        json.dumps(
+            {
+                "type": "image_analysis",
+                "timestamp": "2026-04-09T10:02:00Z",
+                "analysis_type": "initial_description",
+                "content": "A red block is on the table.",
+                "images": [image],
+            }
+        )
+    ]
+
+    status = build_nanobot_task_status(session)
+
+    assert status["recent_events"][0]["summary"] == "initial_description: A red block is on the table."
+    assert status["recent_events"][0]["media"] == [image]
+
+
 def test_session_manager_can_reject_new_active_session() -> None:
     async def scenario() -> None:
         manager = SessionManager()

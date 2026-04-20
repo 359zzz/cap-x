@@ -36,6 +36,7 @@ from capx.llm.client import (  # noqa: F401
     _completions_to_responses_convert_prompt,
     collapse_text_image_inputs,
     is_openrouter_model,
+    is_vlm_model,
     query_model as _query_model,
     query_model_streaming as _query_model_streaming,
     query_model_ensemble as _query_model_ensemble,
@@ -189,10 +190,18 @@ def _extract_code(content: str) -> list[str]:
     return [content]
 
 
+def _normalize_visual_feedback_items(visual_feedback: str | list[str] | None) -> list[str]:
+    if visual_feedback is None:
+        return []
+    if isinstance(visual_feedback, str):
+        return [visual_feedback]
+    return [item for item in visual_feedback if isinstance(item, str) and item]
+
+
 def _build_multi_turn_decision_prompt_legacy(
     obs: dict[str, np.ndarray],
     complete_multi_turn_prompt: str,
-    visual_feedback: str | None = None,
+    visual_feedback: str | list[str] | None = None,
     visual_differencing_feedback: str | None = None,
     *,
     is_video_feedback: bool = False,
@@ -214,16 +223,18 @@ def _build_multi_turn_decision_prompt_legacy(
     multi_turn_decision_prompt[-1]["content"].append(
         {"type": "text", "text": complete_multi_turn_prompt}
     )
-    if visual_feedback is not None:
+    visual_feedback_items = _normalize_visual_feedback_items(visual_feedback)
+    if visual_feedback_items:
         multi_turn_decision_prompt[-1]["content"].append(
             {
                 "type": "text",
-                "text": "Included below is an image of the current state of the environment (after the code above was executed).",
+                "text": "Included below are image(s) available for the current robot state or user follow-up.",
             }
         )
-        multi_turn_decision_prompt[-1]["content"].append(
-            {"type": "image_url", "image_url": {"url": visual_feedback}}
-        )
+        for image_url in visual_feedback_items:
+            multi_turn_decision_prompt[-1]["content"].append(
+                {"type": "image_url", "image_url": {"url": image_url}}
+            )
     if visual_differencing_feedback is not None:
         if is_video_feedback:
             feedback_header = (
@@ -251,7 +262,7 @@ def _build_multi_turn_decision_prompt_legacy(
 def _build_multi_turn_decision_prompt(
     obs: dict[str, np.ndarray],
     complete_multi_turn_prompt: str,
-    visual_feedback: str | None = None,
+    visual_feedback: str | list[str] | None = None,
     visual_differencing_feedback: str | None = None,
     *,
     is_video_feedback: bool = False,
@@ -273,16 +284,18 @@ def _build_multi_turn_decision_prompt(
     multi_turn_decision_prompt[-1]["content"].append(
         {"type": "text", "text": complete_multi_turn_prompt}
     )
-    if visual_feedback is not None:
+    visual_feedback_items = _normalize_visual_feedback_items(visual_feedback)
+    if visual_feedback_items:
         multi_turn_decision_prompt[-1]["content"].append(
             {
                 "type": "text",
-                "text": "Included below is an image of the current state of the environment (after the code above was executed).",
+                "text": "Included below are image(s) available for the current robot state or user follow-up.",
             }
         )
-        multi_turn_decision_prompt[-1]["content"].append(
-            {"type": "image_url", "image_url": {"url": visual_feedback}}
-        )
+        for image_url in visual_feedback_items:
+            multi_turn_decision_prompt[-1]["content"].append(
+                {"type": "image_url", "image_url": {"url": image_url}}
+            )
     if visual_differencing_feedback is not None:
         if is_video_feedback:
             feedback_header = (

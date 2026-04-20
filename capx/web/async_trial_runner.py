@@ -14,8 +14,8 @@ from typing import Any
 
 from capx.envs.configs.instantiate import instantiate
 from capx.llm.client import (
-    VLM_MODELS,
     ModelQueryArgs,
+    is_vlm_model,
     query_model as _query_model,
     query_model_streaming as _query_model_streaming,
 )
@@ -50,11 +50,57 @@ from capx.web.models import (
     WSEventBase,
 )
 from capx.utils import execution_logger
-from capx.web.session_manager import Session, run_blocking_with_interrupt
+from capx.web.session_manager import Session, UserInjection, run_blocking_with_interrupt
 
 logger = logging.getLogger(__name__)
 
 MULTITURN_LIMIT = 30
+
+
+def _normalize_image_media(media: Any) -> list[str]:
+    """Normalize nanobot/user image media into model-ready image URLs."""
+    if not isinstance(media, list):
+        return []
+
+    normalized: list[str] = []
+    for item in media:
+        if not isinstance(item, str):
+            continue
+        value = item.strip()
+        if not value:
+            continue
+        if value.startswith(("data:", "http://", "https://")):
+            normalized.append(value)
+        else:
+            normalized.append(f"data:image/png;base64,{value}")
+    return normalized
+
+
+def _append_images_to_last_prompt(obs: dict[str, Any], images: list[str], intro: str) -> None:
+    """Append image inputs to the last user prompt message in OpenAI chat format."""
+    if not images:
+        return
+    full_prompt = obs.get("full_prompt")
+    if not isinstance(full_prompt, list) or not full_prompt:
+        return
+    last_message = full_prompt[-1]
+    content = last_message.get("content", "")
+    if isinstance(content, str):
+        content = [{"type": "text", "text": content}]
+    elif not isinstance(content, list):
+        content = [{"type": "text", "text": str(content)}]
+    content.append({"type": "text", "text": intro})
+    for image in images:
+        content.append({"type": "image_url", "image_url": {"url": image}})
+    last_message["content"] = content
+
+
+def _coerce_user_injection(value: str | UserInjection | Any) -> tuple[str, list[str]]:
+    if isinstance(value, UserInjection):
+        return value.text, _normalize_image_media(value.media)
+    if isinstance(value, dict):
+        return str(value.get("text") or ""), _normalize_image_media(value.get("media"))
+    return str(value or ""), []
 
 
 @dataclass
@@ -233,8 +279,8 @@ async def run_trial_async(
         # Build initial visual feedback from the frame captured in the reset thread
         initial_visual_feedback_base64 = None
         if (
-            (use_visual_feedback and args.model in VLM_MODELS)
-            or (use_img_differencing and visual_differencing_args.model in VLM_MODELS)
+            (use_visual_feedback and is_vlm_model(args.model))
+            or (use_img_differencing and is_vlm_model(visual_differencing_args.model))
         ) and initial_frame is not None:
             from PIL import Image
             initial_visual_feedback_img = Image.fromarray(initial_frame)
@@ -255,13 +301,28 @@ async def run_trial_async(
                     description="Initial environment state",
                 ))
 
-        # Add visual feedback to prompt if enabled
+        nanobot_initial_media = _normalize_image_media(session.config.get("nanobot_initial_media"))
+        if nanobot_initial_media:
+            for media_item in nanobot_initial_media:
+                if media_item not in visual_feedback_base64_history:
+                    visual_feedback_base64_history.append(media_item)
+                await emit(VisualFeedbackEvent(
+                    session_id=session.session_id,
+                    image_base64=media_item,
+                    description="Nanobot supplied image",
+                ))
+            if initial_visual_feedback_base64 is None:
+                initial_visual_feedback_base64 = nanobot_initial_media[0]
+
+        prompt_images: list[str] = []
         if use_visual_feedback and initial_visual_feedback_base64:
-            obs["full_prompt"][-1]["content"][0]["text"] += (
-                "\n\nIncluded below is an image of the initial state of the environment."
-            )
-            obs["full_prompt"][-1]["content"].append(
-                {"type": "image_url", "image_url": {"url": initial_visual_feedback_base64}}
+            prompt_images.append(initial_visual_feedback_base64)
+        prompt_images.extend(item for item in nanobot_initial_media if item not in prompt_images)
+        if prompt_images and is_vlm_model(args.model):
+            _append_images_to_last_prompt(
+                obs,
+                prompt_images,
+                "Included below are image(s) available for this robot task. Use them when planning perception-dependent actions.",
             )
 
         # Handle image differencing for initial state
@@ -305,6 +366,13 @@ async def run_trial_async(
                 status="description_complete",
                 message="Environment description ready",
                 description_content=initial_env_description,
+            ))
+            await emit(ImageAnalysisEvent(
+                session_id=session.session_id,
+                analysis_type="initial_description",
+                content=initial_env_description,
+                model_used=visual_differencing_args.model,
+                images=[initial_visual_feedback_base64],
             ))
 
         # Display the prompt to the user before generation starts
@@ -575,8 +643,8 @@ async def run_trial_async(
                 # Build visual feedback from the frame captured in the step thread
                 visual_feedback_base64 = None
                 if (
-                    (use_visual_feedback and args.model in VLM_MODELS)
-                    or (use_img_differencing and visual_differencing_args.model in VLM_MODELS)
+                    (use_visual_feedback and is_vlm_model(args.model))
+                    or (use_img_differencing and is_vlm_model(visual_differencing_args.model))
                 ) and post_step_frame is not None:
                     from PIL import Image as _Image
                     import io as _io, base64 as _b64
@@ -626,10 +694,15 @@ async def run_trial_async(
                             analysis_type="state_comparison",
                             content=visual_differencing_feedback,
                             model_used=visual_differencing_args.model,
+                            images=[
+                                visual_feedback_base64_history[-2],
+                                visual_feedback_base64_history[-1],
+                            ],
                         ))
 
                 # Check for user injection - only pause if explicitly requested
                 # Read from session to allow dynamic toggling during trial
+                user_media: list[str] = []
                 if session.await_user_input_each_turn:
                     # Drain any leftover items from previous resumes to prevent auto-continue
                     while not session.user_injection_queue.empty():
@@ -651,14 +724,28 @@ async def run_trial_async(
 
                     # Wait for user input with timeout
                     try:
-                        user_text = await asyncio.wait_for(
+                        injection = await asyncio.wait_for(
                             session.user_injection_queue.get(),
                             timeout=300.0,  # 5 minute timeout
                         )
+                        user_text, user_media = _coerce_user_injection(injection)
                         # Append user text to multi-turn prompt if not empty
                         if user_text:
                             complete_multi_turn_prompt += f"\n\nUser feedback: {user_text}"
                             logger.info(f"User injected: {user_text[:100]}...")
+                        if user_media:
+                            complete_multi_turn_prompt += (
+                                "\n\nUser supplied one or more follow-up images. "
+                                "Use the attached image(s) when deciding whether to regenerate code or finish."
+                            )
+                            for media_item in user_media:
+                                if media_item not in visual_feedback_base64_history:
+                                    visual_feedback_base64_history.append(media_item)
+                                await emit(VisualFeedbackEvent(
+                                    session_id=session.session_id,
+                                    image_base64=media_item,
+                                    description="Nanobot follow-up image",
+                                ))
                     except asyncio.TimeoutError:
                         logger.info("User input timeout, continuing without injection")
 
@@ -671,9 +758,13 @@ async def run_trial_async(
                 if is_cancelled():
                     raise asyncio.CancelledError("Cancelled during multi-turn")
 
-                # Zero out visual feedback if not using it
-                if not use_visual_feedback:
-                    visual_feedback_base64 = None
+                visual_feedback_for_prompt: str | list[str] | None = None
+                prompt_media: list[str] = []
+                if use_visual_feedback and visual_feedback_base64:
+                    prompt_media.append(visual_feedback_base64)
+                prompt_media.extend(item for item in user_media if item not in prompt_media)
+                if prompt_media and is_vlm_model(args.model):
+                    visual_feedback_for_prompt = prompt_media[0] if len(prompt_media) == 1 else prompt_media
 
                 # Build and query for decision (with streaming)
                 turn_number += 1
@@ -685,7 +776,7 @@ async def run_trial_async(
                 ))
 
                 multi_turn_decision_prompt = _build_multi_turn_decision_prompt(
-                    obs, complete_multi_turn_prompt, visual_feedback_base64, visual_differencing_feedback
+                    obs, complete_multi_turn_prompt, visual_feedback_for_prompt, visual_differencing_feedback
                 )
 
                 # Stream multi-turn decision

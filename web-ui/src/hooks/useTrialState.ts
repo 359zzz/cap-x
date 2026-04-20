@@ -321,6 +321,7 @@ export function useTrialState(): UseTrialStateReturn {
             timestamp: event.timestamp,
             content: event.content,
             analysisType: event.analysis_type,
+            analysisImages: event.images || [],
             modelUsed: event.model_used,
           });
           break;

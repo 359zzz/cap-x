@@ -19,7 +19,8 @@ env:
       - Prefer execute_motion_primitive(...) and execute_motion_combo(...).
       - Use move_to_named_pose(...) for anchors such as home and safe_standby.
       - Use move_arm_joints_safe(...) only when the motion catalog is insufficient.
-      - Use read_tactile(), detect_target(), and get_target_pose() before fine contact actions.
+      - Use describe_scene(), read_tactile(), detect_target(), and get_target_pose() before visual or fine contact actions.
+      - If vision returns an image, scene description, or detections, use that evidence and do not guess from text alone.
       - Only one active robot task is allowed at a time.
       - Keep actions conservative and return to a stable region when uncertain.
       - Write ONLY executable Python code without markdown fences.

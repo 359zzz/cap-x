@@ -85,6 +85,7 @@ def _parse_event_history(history: list[str]) -> list[dict[str, Any]]:
                 "type": str(event.get("type", "unknown")),
                 "timestamp": event.get("timestamp"),
                 "summary": _event_summary(event),
+                "media": _event_media(event),
             }
         )
     return parsed
@@ -124,6 +125,30 @@ def _event_summary(event: dict[str, Any]) -> str:
     if event_type == "image_analysis":
         return f"{event.get('analysis_type')}: {_truncate(event.get('content') or '')}"
     return _truncate(json.dumps(event, ensure_ascii=False))
+
+
+def _event_media(event: dict[str, Any]) -> list[str]:
+    event_type = event.get("type")
+    if event_type in {"visual_feedback", "image_analysis"}:
+        image_base64 = event.get("image_base64")
+        images = event.get("images")
+        media = [image_base64] if isinstance(image_base64, str) and image_base64 else []
+        if isinstance(images, list):
+            media.extend(item for item in images if isinstance(item, str) and item)
+        return _dedupe_media(media)
+    if event_type == "execution_step":
+        images = event.get("images")
+        if isinstance(images, list):
+            return _dedupe_media([item for item in images if isinstance(item, str) and item])
+    return []
+
+
+def _dedupe_media(media: list[str]) -> list[str]:
+    result: list[str] = []
+    for item in media:
+        if item and item not in result:
+            result.append(item)
+    return result
 
 
 def _truncate(text: str, limit: int = 180) -> str:

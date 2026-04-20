@@ -48,6 +48,28 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum completion tokens passed to cap-x.",
     )
     parser.add_argument(
+        "--use-visual-feedback",
+        type=lambda value: value.strip().lower() in {"1", "true", "yes", "on"},
+        default=None,
+        help="Override cap-x use_visual_feedback. Use True for image input to the model.",
+    )
+    parser.add_argument(
+        "--use-img-differencing",
+        type=lambda value: value.strip().lower() in {"1", "true", "yes", "on"},
+        default=None,
+        help="Override cap-x use_img_differencing. Use True for VLM state descriptions.",
+    )
+    parser.add_argument(
+        "--visual-differencing-model",
+        default=None,
+        help="Model used for image differencing. Defaults to --model.",
+    )
+    parser.add_argument(
+        "--visual-differencing-server-url",
+        default=None,
+        help="Chat completions endpoint for the image differencing model. Defaults to --llm-server-url.",
+    )
+    parser.add_argument(
         "--await-user-input-each-turn",
         type=lambda value: value.strip().lower() in {"1", "true", "yes", "on"},
         default=True,
@@ -83,6 +105,10 @@ async def _run_gateway(args: argparse.Namespace) -> None:
                 server_url=args.llm_server_url,
                 temperature=args.temperature,
                 max_tokens=args.max_tokens,
+                use_visual_feedback=args.use_visual_feedback,
+                use_img_differencing=args.use_img_differencing,
+                visual_differencing_model=args.visual_differencing_model,
+                visual_differencing_model_server_url=args.visual_differencing_server_url,
                 await_user_input_each_turn=args.await_user_input_each_turn,
                 execution_timeout=args.execution_timeout,
                 poll_interval_s=args.poll_interval,

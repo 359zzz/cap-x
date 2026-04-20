@@ -91,6 +91,7 @@ export interface ImageAnalysisEvent extends WSEventBase {
   analysis_type: 'initial_description' | 'state_comparison';
   content: string;
   model_used?: string;
+  images?: string[];
 }
 
 export interface ExecutionStepEvent extends WSEventBase {
@@ -254,6 +255,7 @@ export interface ChatMessage {
   error?: string;
   isExecuting?: boolean;
   analysisType?: 'initial_description' | 'state_comparison';  // for image_analysis messages
+  analysisImages?: string[];  // for image_analysis messages
   modelUsed?: string;  // for image_analysis and model_streaming messages
   turnNumber?: number;  // for multi-turn tracking
   isStreaming?: boolean;

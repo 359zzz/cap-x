@@ -97,6 +97,64 @@ The adapter inside `cap-x` currently expects:
 - `POST /tactile/read`
 - `POST /detect_once`
 
+If the external `openclaw_realsense_agent` cannot start on port `8000`, you can use the
+in-repo Qwen/OpenAI-compatible fallback gateway instead. It exposes the same core
+OpenClaw-compatible routes plus `POST /describe_once`, and returns both visual text
+results and the image it analyzed so Nanobot can forward the image back to the app:
+
+```powershell
+# Start the local OpenAI-compatible proxy on 8110 against DashScope/Qwen.
+python -m capx.serving.openrouter_server `
+  --api-key $env:DASHSCOPE_API_KEY `
+  --base-url https://dashscope.aliyuncs.com/compatible-mode/v1 `
+  --port 8110
+
+# Start the in-repo OpenArm perception gateway on 8000.
+# Use either a camera snapshot URL or a test image path as the image source.
+$env:CAPX_OPENARM_CAMERA_SNAPSHOT_URL = 'http://127.0.0.1:8001/snapshot'
+python -m capx.serving.openarm_perception_gateway `
+  --port 8000 `
+  --model qwen-vl-max-latest `
+  --server-url http://127.0.0.1:8110/chat/completions
+```
+
+If you do not already have a camera service on `8001`, you can start the
+in-repo single-camera snapshot server on the robot-side Linux host and point it
+at one explicit V4L2 device:
+
+```bash
+python -m capx.serving.openarm_camera_snapshot_server \
+  --host 127.0.0.1 \
+  --port 8001 \
+  --device /dev/v4l/by-id/usb-Sonix_Technology_Co.__Ltd._Dabai_DC1_CC1T35300ED-video-index0
+
+curl http://127.0.0.1:8001/health
+curl http://127.0.0.1:8001/snapshot --output snapshot.jpg
+```
+
+If `8000` is already occupied or still unreliable, run the gateway on another port and
+point the OpenArm adapter at it:
+
+```powershell
+python -m capx.serving.openarm_perception_gateway --port 8010
+$env:CAPX_OPENARM_PERCEPTION_BASE_URL = 'http://127.0.0.1:8010'
+```
+
+For a quick non-camera smoke test:
+
+```powershell
+python -m capx.serving.openarm_perception_gateway `
+  --port 8000 `
+  --camera-image-path C:\path\to\test_scene.png `
+  --model qwen-vl-max-latest `
+  --server-url http://127.0.0.1:8110/chat/completions
+```
+
+The OpenArm code API now includes `describe_scene(...)`. For a command such as
+“先看看桌上有什么，再决定抓哪个物体”, the model can call `describe_scene()` or
+`detect_target(...)`; returned `image_base64` / `images` are logged as execution
+step media and relayed through Nanobot status/outbound messages.
+
 ## 3. Check Provider Wiring
 
 Use the embedded nanobot-compatible provider wrapper:

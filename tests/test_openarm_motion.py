@@ -135,6 +135,13 @@ class FakeRuntime:
             detections.append(item)
         return {"detections": detections}
 
+    def describe_scene(self, prompt: str | None = None) -> dict[str, object]:
+        return {
+            "description": prompt or "test scene",
+            "detections": [],
+            "image_base64": "data:image/png;base64,abc123",
+        }
+
 
 def _make_registry(tmp_path: Path) -> OpenArmMotionAssetRegistry:
     registry = OpenArmMotionAssetRegistry(asset_root=tmp_path / "openarm")
@@ -608,6 +615,7 @@ def test_openarm_control_api_exposes_new_high_level_functions(tmp_path: Path) ->
     functions = api.functions()
 
     for name in [
+        "describe_scene",
         "get_tactile_health",
         "estimate_arm_region",
         "align_to_target",

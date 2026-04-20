@@ -89,7 +89,9 @@ class CapxNanobotRobotShell:
 
     async def _handle_message(self, msg: InboundMessage) -> None:
         text = msg.content.strip()
-        if not text:
+        if not text and msg.media:
+            text = "Please inspect the attached image and use it for the robot task."
+        elif not text:
             return
 
         lower = text.lower()
@@ -120,10 +122,12 @@ class CapxNanobotRobotShell:
                     return
 
                 if status.can_accept_injection:
+                    inject_kwargs = {"media": msg.media} if msg.media else {}
                     action = await asyncio.to_thread(
                         self.client.inject_task,
                         status.session_id,
                         text,
+                        **inject_kwargs,
                     )
                     await self._reply(
                         msg.channel,
@@ -147,6 +151,7 @@ class CapxNanobotRobotShell:
             request = NanobotTaskStartRequest(
                 config_path=self.config.config_path,
                 initial_instruction=text,
+                initial_media=list(msg.media),
                 model=self.config.model,
                 server_url=self.config.server_url,
                 temperature=self.config.temperature,
@@ -195,6 +200,7 @@ class CapxNanobotRobotShell:
             msg.channel,
             msg.chat_id,
             self._format_status_message(status),
+            media=self._recent_status_media(status),
             metadata={"session_id": status.session_id, "action": "status"},
         )
 
@@ -239,12 +245,14 @@ class CapxNanobotRobotShell:
                     status.can_accept_injection,
                     status.last_error,
                     status.recent_events[-1].summary if status.recent_events else None,
+                    tuple(status.recent_events[-1].media) if status.recent_events else (),
                 )
                 if signature != self._last_status_signature:
                     await self._reply(
                         self._owner_channel,
                         self._owner_chat_id,
                         self._format_status_message(status),
+                        media=self._recent_status_media(status),
                         metadata={"session_id": status.session_id, "action": "monitor"},
                     )
                     self._last_status_signature = signature
@@ -296,6 +304,7 @@ class CapxNanobotRobotShell:
         chat_id: str,
         content: str,
         *,
+        media: list[str] | None = None,
         metadata: dict[str, object] | None = None,
     ) -> None:
         await self.bus.publish_outbound(
@@ -303,9 +312,21 @@ class CapxNanobotRobotShell:
                 channel=channel,
                 chat_id=chat_id,
                 content=content,
+                media=media or [],
                 metadata=metadata or {},
             )
         )
+
+    def _recent_status_media(self, status: NanobotTaskStatusResponse) -> list[str]:
+        media: list[str] = []
+        for event in reversed(status.recent_events):
+            event_media = getattr(event, "media", None) or []
+            for item in event_media:
+                if item and item not in media:
+                    media.append(item)
+                if len(media) >= 3:
+                    return media
+        return media
 
     def _help_text(self) -> str:
         return (

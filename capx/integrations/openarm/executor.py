@@ -110,6 +110,9 @@ class OpenArmMotionExecutor:
     def detect_target(self, target_name: str, *, top_k: int = 3) -> dict[str, Any]:
         return self.runtime.detect_target(target_name, top_k=top_k)
 
+    def describe_scene(self, prompt: str | None = None) -> dict[str, Any]:
+        return self.runtime.describe_scene(prompt)
+
     def get_target_pose(self, target_name: str) -> dict[str, Any]:
         detection = self.runtime.detect_target(target_name, top_k=1)
         detections = detection.get("detections", [])

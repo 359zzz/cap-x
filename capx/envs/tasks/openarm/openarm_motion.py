@@ -15,9 +15,11 @@ Rules:
 - Prefer `execute_motion_primitive(...)` and `execute_motion_combo(...)`.
 - Use `move_to_named_pose(...)` to reach known anchors like `home` or `safe_standby`.
 - Use explicit joint control only when the motion catalog is insufficient.
-- Only one active robot task is allowed at a time.
 - The gripper is directly controllable; use tactile feedback when helpful.
-- Do not assume unavailable perception or simulation features.
+- Use `describe_scene(...)`, `detect_target(...)`, and `get_target_pose(...)` for visual decisions.
+- If vision returns an image, description, or detections, use that evidence instead of guessing.
+- Only one active robot task is allowed at a time.
+- Do not assume unavailable simulation features.
 
 Write ONLY executable Python code (no code fences). Import numpy if needed.
 """

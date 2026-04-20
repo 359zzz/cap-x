@@ -37,10 +37,22 @@ VLM_MODELS = [
     "openai/gpt-5.4",
     "openai/o1",
     "openai/o4-mini",
+    "qwen-vl-plus",
+    "qwen-vl-max",
+    "qwen-vl-max-latest",
+    "qwen3-vl-plus",
+    "qwen3-vl-flash",
+    "qwen3-vl-max",
+    "qwen3.5-plus",
+    "qwen3.5-flash",
+    "qwen3.5-122b-a10b",
     "deepseek/deepseek-v3.2",
     "deepseek/deepseek-r1-0528",
     "deepseek/deepseek-r1",
     "qwen/qwen3.5-122b-a10b",
+    "qwen/qwen2.5-vl-72b-instruct",
+    "qwen/qwen3-vl-plus",
+    "qwen/qwen3-vl-flash",
     "moonshotai/kimi-k2",
 ]
 CLAUDE_MODELS = ["anthropic/claude-opus-4-5", "anthropic/claude-haiku-4-5"]
@@ -84,6 +96,32 @@ ENSEMBLE_CONFIGS = [
 def is_openrouter_model(model: str) -> bool:
     """Return True if the model should be routed through the OpenRouter proxy."""
     return model.startswith("openrouter/") or model in OPENROUTER_MODELS
+
+
+def is_vlm_model(model: str) -> bool:
+    """Return True when a model name is expected to accept image inputs."""
+    normalized = model.strip().lower()
+    leaf_name = normalized.rsplit("/", 1)[-1]
+    known = {item.lower() for item in VLM_MODELS}
+    if normalized in known or leaf_name in known:
+        return True
+    qwen_vision_markers = (
+        "qwen-vl",
+        "qwen2-vl",
+        "qwen2.5-vl",
+        "qwen3-vl",
+    )
+    if any(marker in normalized for marker in qwen_vision_markers):
+        return True
+    qwen35_vision_names = {
+        "qwen3.5-plus",
+        "qwen3.5-flash",
+        "qwen3.5-122b-a10b",
+        "qwen3.5-397b-a17b",
+        "qwen3.5-27b-a3b",
+        "qwen3.5-35b-a3b",
+    }
+    return leaf_name in qwen35_vision_names
 
 
 @dataclass

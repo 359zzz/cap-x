@@ -68,6 +68,14 @@ def _raise_exception_in_thread(thread_id: int, exception_type: type) -> bool:
 
 
 @dataclass
+class UserInjection:
+    """Follow-up user input injected while a session is awaiting input."""
+
+    text: str
+    media: list[str] = field(default_factory=list)
+
+
+@dataclass
 class Session:
     """Represents an active trial session."""
 
@@ -86,7 +94,7 @@ class Session:
 
     # Async coordination
     cancel_event: asyncio.Event = field(default_factory=asyncio.Event)
-    user_injection_queue: asyncio.Queue[str] = field(default_factory=asyncio.Queue)
+    user_injection_queue: asyncio.Queue[str | UserInjection] = field(default_factory=asyncio.Queue)
 
     # Running task reference
     task: asyncio.Task | None = None
@@ -264,14 +272,20 @@ class SessionManager:
 
         return False
 
-    async def inject_prompt(self, session_id: str, text: str) -> bool:
+    async def inject_prompt(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        media: list[str] | None = None,
+    ) -> bool:
         """Inject user prompt text into a session."""
         session = await self.get_session(session_id)
         if not session:
             return False
 
         if session.state == SessionState.AWAITING_USER_INPUT:
-            await session.user_injection_queue.put(text)
+            await session.user_injection_queue.put(UserInjection(text=text, media=list(media or [])))
             logger.info(f"Injected prompt into session {session_id}: {text[:50]}...")
             return True
 

@@ -391,6 +391,13 @@ export function ChatMessageComponent({ message }: ChatMessageComponentProps) {
             <div className="text-sm text-text-primary bg-surface-raised rounded-lg p-4 border border-surface-border prose prose-sm max-w-none prose-invert">
               <ReactMarkdown>{message.content || ''}</ReactMarkdown>
             </div>
+            {message.analysisImages && message.analysisImages.length > 0 && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                {message.analysisImages.map((image, index) => (
+                  <ImageViewer key={index} src={image} alt={`Analysis image ${index + 1}`} />
+                ))}
+              </div>
+            )}
           </div>
         </div>
       );

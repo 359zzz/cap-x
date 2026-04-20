@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import argparse
+import base64
 import json
+import mimetypes
 import os
+from pathlib import Path
 from typing import Any
 
 import requests
@@ -23,6 +26,21 @@ def _optional_bool(value: str) -> bool:
 
 def _server_base_url(args: argparse.Namespace) -> str:
     return (args.server or os.getenv("CAPX_WEB_BASE_URL") or "http://127.0.0.1:8200").rstrip("/")
+
+
+def _load_media(values: list[str] | None) -> list[str]:
+    media: list[str] = []
+    for value in values or []:
+        if value.startswith(("data:", "http://", "https://")):
+            media.append(value)
+            continue
+        path = Path(value).expanduser()
+        if not path.exists():
+            raise SystemExit(f"Image file not found: {value}")
+        mime_type = mimetypes.guess_type(path.name)[0] or "image/png"
+        encoded = base64.b64encode(path.read_bytes()).decode("utf-8")
+        media.append(f"data:{mime_type};base64,{encoded}")
+    return media
 
 
 def _request(
@@ -58,6 +76,7 @@ def cmd_start(args: argparse.Namespace) -> None:
         "max_tokens": args.max_tokens,
         "await_user_input_each_turn": args.await_user_input_each_turn,
         "execution_timeout": args.execution_timeout,
+        "initial_media": _load_media(args.image),
     }
     if args.use_visual_feedback is not None:
         payload["use_visual_feedback"] = args.use_visual_feedback
@@ -77,7 +96,7 @@ def cmd_status(args: argparse.Namespace) -> None:
 
 def cmd_inject(args: argparse.Namespace) -> None:
     url = f"{_server_base_url(args)}/api/nanobot/tasks/{args.session_id}/inject"
-    _print_payload(_request("POST", url, payload={"text": args.text}))
+    _print_payload(_request("POST", url, payload={"text": args.text, "media": _load_media(args.image)}))
 
 
 def cmd_stop(args: argparse.Namespace) -> None:
@@ -141,6 +160,12 @@ def build_parser() -> argparse.ArgumentParser:
         help="Per-code-block execution timeout in seconds.",
     )
     start_parser.add_argument(
+        "--image",
+        action="append",
+        default=[],
+        help="Attach an image path, data URL, or HTTP URL to the initial nanobot instruction. Repeat for multiple images.",
+    )
+    start_parser.add_argument(
         "--use-visual-feedback",
         type=_optional_bool,
         default=None,
@@ -171,6 +196,12 @@ def build_parser() -> argparse.ArgumentParser:
     inject_parser = subparsers.add_parser("inject", help="Inject follow-up guidance.")
     inject_parser.add_argument("session_id", help="Session ID returned by the start command.")
     inject_parser.add_argument("text", help="Follow-up instruction text.")
+    inject_parser.add_argument(
+        "--image",
+        action="append",
+        default=[],
+        help="Attach an image path, data URL, or HTTP URL to the follow-up instruction. Repeat for multiple images.",
+    )
     inject_parser.set_defaults(func=cmd_inject)
 
     stop_parser = subparsers.add_parser("stop", help="Stop one task.")

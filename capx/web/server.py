@@ -161,6 +161,7 @@ def create_app() -> FastAPI:
         await_user_input_each_turn: bool,
         execution_timeout: int,
         initial_instruction: str | None = None,
+        initial_media: list[str] | None = None,
         replace_existing: bool = True,
     ) -> Session:
         manager = get_session_manager()
@@ -185,6 +186,8 @@ def create_app() -> FastAPI:
             if initial_instruction:
                 env_factory = apply_initial_instruction_to_env_factory(env_factory, initial_instruction)
                 config["nanobot_initial_instruction"] = initial_instruction
+            if initial_media:
+                config["nanobot_initial_media"] = list(initial_media)
 
             if config.get("output_dir"):
                 from datetime import datetime
@@ -398,6 +401,7 @@ def create_app() -> FastAPI:
                 await_user_input_each_turn=request.await_user_input_each_turn,
                 execution_timeout=request.execution_timeout,
                 initial_instruction=request.initial_instruction,
+                initial_media=request.initial_media,
                 replace_existing=False,
             )
             return _build_nanobot_action_response("started", session)
@@ -432,7 +436,7 @@ def create_app() -> FastAPI:
 
         manager = get_session_manager()
         await _get_session_or_404(session_id)
-        success = await manager.inject_prompt(session_id, request.text)
+        success = await manager.inject_prompt(session_id, request.text, media=request.media)
         if not success:
             raise HTTPException(
                 status_code=400,
@@ -572,8 +576,13 @@ def create_app() -> FastAPI:
 
                     elif msg_type == "inject_prompt":
                         text = message.get("text", "")
+                        media = message.get("media", [])
                         if text:
-                            await manager.inject_prompt(session_id, text)
+                            await manager.inject_prompt(
+                                session_id,
+                                text,
+                                media=media if isinstance(media, list) else [],
+                            )
                             logger.info(f"Injected prompt: {text[:50]}...")
 
                     elif msg_type == "resume":

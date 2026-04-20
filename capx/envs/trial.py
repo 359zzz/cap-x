@@ -28,8 +28,8 @@ from capx.envs.configs.instantiate import instantiate
 from capx.envs.tasks.base import CodeExecutionEnvBase
 
 from capx.llm.client import (
-    VLM_MODELS,
     ModelQueryArgs,
+    is_vlm_model,
     query_model as _query_model,
     query_model_ensemble as _query_model_ensemble,
     query_single_model_ensemble as _query_single_model_ensemble,
@@ -230,8 +230,8 @@ def _capture_initial_visual_feedback(
     use_wrist = config.get("use_wrist_camera", False)
 
     needs_visual = (
-        (config["use_visual_feedback"] and args.model in VLM_MODELS)
-        or (config["use_img_differencing"] and visual_differencing_args.model in VLM_MODELS)
+        (config["use_visual_feedback"] and is_vlm_model(args.model))
+        or (config["use_img_differencing"] and is_vlm_model(visual_differencing_args.model))
         or config.get("use_video_differencing", False)
     )
     if not (needs_visual and hasattr(env, "render")):
@@ -550,8 +550,8 @@ def _handle_multi_turn_step(
     # Capture visual feedback if applicable
     visual_feedback_base64 = None
     needs_visual = (
-        (config["use_visual_feedback"] and args.model in VLM_MODELS)
-        or (config["use_img_differencing"] and visual_differencing_args.model in VLM_MODELS)
+        (config["use_visual_feedback"] and is_vlm_model(args.model))
+        or (config["use_img_differencing"] and is_vlm_model(visual_differencing_args.model))
     )
     if needs_visual and hasattr(env, "render"):
         vf_base64, vf_img = _get_visual_feedback(env)
@@ -696,7 +696,7 @@ def _run_single_trial(
     )
 
     if config["use_img_differencing"] or use_video_diff:
-        assert visual_differencing_args.model in VLM_MODELS, (
+        assert is_vlm_model(visual_differencing_args.model), (
             "Image/video differencing model must be in the list of VLM models"
         )
 

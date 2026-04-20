@@ -21,6 +21,7 @@ class OpenArmControlApi(ApiBase):
         return {
             "get_robot_state": self.get_robot_state,
             "get_observation": self.get_observation,
+            "describe_scene": self.describe_scene,
             "read_tactile": self.read_tactile,
             "get_tactile_health": self.get_tactile_health,
             "detect_target": self.detect_target,
@@ -62,6 +63,26 @@ class OpenArmControlApi(ApiBase):
         self._log_step_update(images=image if image is not None else None)
         return obs
 
+    def describe_scene(self, prompt: str | None = None) -> dict[str, Any]:
+        """Capture and describe the current camera image through the perception adapter.
+
+        Args:
+            prompt: Optional natural-language focus for the visual description, such as
+                "what objects are on the table?".
+
+        Returns:
+            A perception payload that may include a text description, detections, and
+            an image_base64/images field for UI and nanobot forwarding.
+        """
+        self._log_step("describe_scene", "Capturing and describing the current scene ...")
+        result = self._executor.describe_scene(prompt)
+        description = result.get("description") or result.get("content") or result.get("summary")
+        self._log_step_update(
+            text=str(description or result.get("status", "scene description complete")),
+            images=self._extract_result_images(result),
+        )
+        return result
+
     def read_tactile(self, arm: str | None = None) -> dict[str, Any]:
         """Read tactile information from the local perception adapter.
 
@@ -96,7 +117,10 @@ class OpenArmControlApi(ApiBase):
         self._log_step("detect_target", f"Detecting target '{target_name}' ...")
         result = self._executor.detect_target(target_name)
         summary = f"detections={len(result.get('detections', []))}"
-        self._log_step_update(text=summary)
+        description = result.get("description") or result.get("content")
+        if description:
+            summary = f"{summary}\n{description}"
+        self._log_step_update(text=summary, images=self._extract_result_images(result))
         return result
 
     def get_target_pose(self, target_name: str) -> dict[str, Any]:
@@ -373,6 +397,17 @@ class OpenArmControlApi(ApiBase):
             fraction = mapping[value]
         fraction = max(0.0, min(1.0, fraction))
         return 1.0 - fraction if closing else fraction
+
+    def _extract_result_images(self, result: dict[str, Any]) -> list[str]:
+        images: list[str] = []
+        for key in ("image_base64", "image", "annotated_image_base64", "annotated_image"):
+            value = result.get(key)
+            if isinstance(value, str) and value:
+                images.append(value)
+        raw_images = result.get("images")
+        if isinstance(raw_images, list):
+            images.extend(item for item in raw_images if isinstance(item, str) and item)
+        return images
 
 
 class OpenArmRecordingApi(ApiBase):

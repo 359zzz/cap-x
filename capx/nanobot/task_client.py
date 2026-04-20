@@ -36,11 +36,17 @@ class CapxNanobotTaskClient:
         data = self._request_json("GET", f"/api/nanobot/tasks/{session_id}")
         return NanobotTaskStatusResponse.model_validate(data)
 
-    def inject_task(self, session_id: str, text: str) -> NanobotTaskActionResponse:
+    def inject_task(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        media: list[str] | None = None,
+    ) -> NanobotTaskActionResponse:
         data = self._request_json(
             "POST",
             f"/api/nanobot/tasks/{session_id}/inject",
-            payload={"text": text},
+            payload={"text": text, "media": list(media or [])},
         )
         return NanobotTaskActionResponse.model_validate(data)
 
