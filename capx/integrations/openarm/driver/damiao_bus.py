@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import logging
+import os
 import time
 from contextlib import contextmanager
 from copy import deepcopy
@@ -46,6 +47,10 @@ LONG_TIMEOUT_SEC = 0.1
 MEDIUM_TIMEOUT_SEC = 0.01
 SHORT_TIMEOUT_SEC = 0.001
 PRECISE_TIMEOUT_SEC = 0.0001
+CAN_SEND_RETRIES = int(os.getenv("CAPX_OPENARM_CAN_SEND_RETRIES", "4"))
+CAN_SEND_RETRY_SLEEP_SEC = float(os.getenv("CAPX_OPENARM_CAN_SEND_RETRY_SLEEP_S", "0.002"))
+CAN_SEND_TIMEOUT_SEC = float(os.getenv("CAPX_OPENARM_CAN_SEND_TIMEOUT_S", "0.02"))
+CAN_BATCH_SEND_GAP_SEC = float(os.getenv("CAPX_OPENARM_CAN_BATCH_SEND_GAP_S", "0.0005"))
 
 
 class MotorState(TypedDict):
@@ -163,7 +168,7 @@ class DamiaoMotorsBus:
                 is_extended_id=False,
                 is_fd=self.use_can_fd,
             )
-            self.canbus.send(msg)
+            self._send_can_message(msg)
 
             response = None
             start_time = time.time()
@@ -184,6 +189,49 @@ class DamiaoMotorsBus:
                 "OpenArm Damiao handshake failed. Missing motors: "
                 f"{missing_motors}. Check 24V power, CAN wiring, and motor IDs."
             )
+
+    def _send_can_message(self, msg: Any) -> None:
+        if self.canbus is None:
+            raise RuntimeError("CAN bus is not initialized.")
+
+        last_exc: Exception | None = None
+        for attempt in range(CAN_SEND_RETRIES + 1):
+            try:
+                try:
+                    self.canbus.send(msg, timeout=CAN_SEND_TIMEOUT_SEC)
+                except TypeError:
+                    self.canbus.send(msg)
+                return
+            except Exception as exc:
+                last_exc = exc
+                if not self._is_transient_send_buffer_error(exc) or attempt >= CAN_SEND_RETRIES:
+                    raise
+                sleep_s = CAN_SEND_RETRY_SLEEP_SEC * (attempt + 1)
+                logger.warning(
+                    "OpenArm CAN send buffer full on %s; retrying in %.3fs (%d/%d): %s",
+                    self.port,
+                    sleep_s,
+                    attempt + 1,
+                    CAN_SEND_RETRIES,
+                    exc,
+                )
+                time.sleep(sleep_s)
+
+        if last_exc is not None:
+            raise last_exc
+
+    @staticmethod
+    def _is_transient_send_buffer_error(exc: Exception) -> bool:
+        error_code = getattr(exc, "error_code", None)
+        errno_value = getattr(exc, "errno", None)
+        text = str(exc).lower()
+        return (
+            error_code == 105
+            or errno_value == 105
+            or "no buffer space" in text
+            or "enobufs" in text
+            or "error code 105" in text
+        )
 
     @check_if_not_connected
     def disconnect(self, disable_torque: bool = True) -> None:
@@ -250,7 +298,7 @@ class DamiaoMotorsBus:
             is_extended_id=False,
             is_fd=self.use_can_fd,
         )
-        self.canbus.send(msg)
+        self._send_can_message(msg)
         if response := self._recv_motor_response(expected_recv_id=recv_id):
             self._process_response(motor_name, response)
 
@@ -265,7 +313,7 @@ class DamiaoMotorsBus:
             is_extended_id=False,
             is_fd=self.use_can_fd,
         )
-        self.canbus.send(msg)
+        self._send_can_message(msg)
         return self._recv_motor_response(expected_recv_id=recv_id)
 
     def _recv_motor_response(
@@ -357,7 +405,7 @@ class DamiaoMotorsBus:
             is_extended_id=False,
             is_fd=self.use_can_fd,
         )
-        self.canbus.send(msg)
+        self._send_can_message(msg)
         if response := self._recv_motor_response(expected_recv_id=self._get_motor_recv_id(motor)):
             self._process_response(motor_name, response)
 
@@ -388,7 +436,9 @@ class DamiaoMotorsBus:
                 is_extended_id=False,
                 is_fd=self.use_can_fd,
             )
-            self.canbus.send(msg)
+            self._send_can_message(msg)
+            if CAN_BATCH_SEND_GAP_SEC > 0:
+                time.sleep(CAN_BATCH_SEND_GAP_SEC)
             recv_id_to_motor[self._get_motor_recv_id(motor)] = motor_name
 
         responses = self._recv_all_responses(list(recv_id_to_motor), timeout=SHORT_TIMEOUT_SEC)
@@ -515,7 +565,7 @@ class DamiaoMotorsBus:
                 is_extended_id=False,
                 is_fd=self.use_can_fd,
             )
-            self.canbus.send(msg)
+            self._send_can_message(msg)
 
         recv_ids = [self._get_motor_recv_id(motor) for motor in motors]
         responses = self._recv_all_responses(recv_ids, timeout=MEDIUM_TIMEOUT_SEC)

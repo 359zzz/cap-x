@@ -178,7 +178,7 @@ def create_app(config: CameraSnapshotConfig | None = None) -> FastAPI:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Run a single-camera snapshot server.")
     parser.add_argument("--host", default="127.0.0.1", help="Bind host.")
-    parser.add_argument("--port", type=int, default=8001, help="Bind port.")
+    parser.add_argument("--port", type=int, default=8011, help="Bind port.")
     parser.add_argument(
         "--device",
         default="/dev/video0",

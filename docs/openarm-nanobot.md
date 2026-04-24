@@ -111,25 +111,25 @@ python -m capx.serving.openrouter_server `
 
 # Start the in-repo OpenArm perception gateway on 8000.
 # Use either a camera snapshot URL or a test image path as the image source.
-$env:CAPX_OPENARM_CAMERA_SNAPSHOT_URL = 'http://127.0.0.1:8001/snapshot'
+$env:CAPX_OPENARM_CAMERA_SNAPSHOT_URL = 'http://127.0.0.1:8011/snapshot'
 python -m capx.serving.openarm_perception_gateway `
   --port 8000 `
   --model qwen-vl-max-latest `
   --server-url http://127.0.0.1:8110/chat/completions
 ```
 
-If you do not already have a camera service on `8001`, you can start the
-in-repo single-camera snapshot server on the robot-side Linux host and point it
+If you want a dedicated Dabai camera service without touching any existing
+service on `8001`, start the in-repo snapshot server on `8011` and point it
 at one explicit V4L2 device:
 
 ```bash
 python -m capx.serving.openarm_camera_snapshot_server \
   --host 127.0.0.1 \
-  --port 8001 \
+  --port 8011 \
   --device /dev/v4l/by-id/usb-Sonix_Technology_Co.__Ltd._Dabai_DC1_CC1T35300ED-video-index0
 
-curl http://127.0.0.1:8001/health
-curl http://127.0.0.1:8001/snapshot --output snapshot.jpg
+curl http://127.0.0.1:8011/health
+curl http://127.0.0.1:8011/snapshot --output snapshot.jpg
 ```
 
 If `8000` is already occupied or still unreliable, run the gateway on another port and
@@ -439,6 +439,30 @@ python -m capx.cli.openarm_assets record-combo hand_to_chest --arm-mode single -
 python -m capx.cli.openarm_assets record-combo both_arms_open --arm-mode both --magnitude medium
 ```
 
+Tomato-picking example with `left=can3` and `right=can2`:
+
+```bash
+sudo ip link set can3 down
+sudo ip link set can3 type can bitrate 1000000 dbitrate 5000000 fd on
+sudo ip link set can3 up
+
+sudo ip link set can2 down
+sudo ip link set can2 type can bitrate 1000000 dbitrate 5000000 fd on
+sudo ip link set can2 up
+
+python scripts/openarm_record_tomato_sequence.py \
+  --left-port can3 \
+  --right-port can2 \
+  --task-arm left \
+  --print-can-setup
+```
+
+Default anchor names recorded by that helper script:
+
+- `left_tomato_locate_ready`
+- `left_tomato_grasp_hold`
+- `left_tomato_detach_lift`
+
 Main recording and asset files:
 
 - [capx/cli/openarm_assets.py](../capx/cli/openarm_assets.py)
@@ -523,3 +547,9 @@ If the robot does not move as expected, check in this order:
 3. perception service `/health` and `/tactile/health`
 4. whether the required anchor and primitive assets have actually been recorded
 5. whether the current task is blocked waiting for user input instead of still executing
+
+The project defaults to the dedicated Dabai camera port `8011`. If
+`scripts/start_openarm_snapshot_server.sh` fails with `address already in use` on
+`127.0.0.1:8011`, another process is already bound to that Dabai port. Choose
+another `CAPX_OPENARM_CAMERA_PORT` and update
+`CAPX_OPENARM_CAMERA_SNAPSHOT_URL` to match.
