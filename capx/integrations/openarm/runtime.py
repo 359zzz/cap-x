@@ -38,6 +38,7 @@ def _env_flag(name: str, default: bool) -> bool:
 class ArmConnectionConfig:
     port: str = ""
     side: str = "left"
+    zero_on_connect: bool = False
     can_interface: str = "socketcan"
     use_can_fd: bool = True
     can_bitrate: int = 1_000_000
@@ -76,6 +77,7 @@ class OpenArmRuntimeConfig:
         default_factory=lambda: ArmConnectionConfig(
             port=os.getenv("CAPX_OPENARM_LEFT_PORT", ""),
             side="left",
+            zero_on_connect=_env_flag("CAPX_OPENARM_LEFT_ZERO_ON_CONNECT", False),
             can_interface=os.getenv("CAPX_OPENARM_LEFT_CAN_INTERFACE", "socketcan"),
         )
     )
@@ -83,6 +85,7 @@ class OpenArmRuntimeConfig:
         default_factory=lambda: ArmConnectionConfig(
             port=os.getenv("CAPX_OPENARM_RIGHT_PORT", ""),
             side="right",
+            zero_on_connect=_env_flag("CAPX_OPENARM_RIGHT_ZERO_ON_CONNECT", False),
             can_interface=os.getenv("CAPX_OPENARM_RIGHT_CAN_INTERFACE", "socketcan"),
         )
     )
@@ -144,6 +147,7 @@ class InRepoBiOpenArmDriver:
             calibration_dir=self.config.calibration_dir,
             port=self.config.left_arm.port,
             side="left",
+            zero_on_connect=self.config.left_arm.zero_on_connect,
             can_interface=self.config.left_arm.can_interface,
             use_can_fd=self.config.left_arm.use_can_fd,
             can_bitrate=self.config.left_arm.can_bitrate,
@@ -156,6 +160,7 @@ class InRepoBiOpenArmDriver:
             calibration_dir=self.config.calibration_dir,
             port=self.config.right_arm.port,
             side="right",
+            zero_on_connect=self.config.right_arm.zero_on_connect,
             can_interface=self.config.right_arm.can_interface,
             use_can_fd=self.config.right_arm.use_can_fd,
             can_bitrate=self.config.right_arm.can_bitrate,
@@ -273,15 +278,17 @@ class OpenArmRuntime:
             timeout_s=timeout_s,
         )
         started = time.monotonic()
+        wait_targets = dict(target_joints)
         for step_index, step_targets in enumerate(waypoints):
             action = {
                 f"{arm_prefix}{joint}.pos": float(step_targets[joint]) for joint in target_joints
             }
-            self.driver.send_action(action)
+            sent_action = self.driver.send_action(action)
+            wait_targets = self._extract_sent_targets(sent_action, arm)
             if step_index < len(waypoints) - 1:
                 time.sleep(self._step_interval_s())
         remaining_timeout = max(self._step_interval_s(), timeout_s - (time.monotonic() - started))
-        self._wait_until_arm_close(arm, target_joints, timeout_s=remaining_timeout)
+        self._wait_until_arm_close(arm, wait_targets, timeout_s=remaining_timeout)
         return self.get_arm_joint_positions(arm)
 
     def move_both_arms_blocking(
@@ -312,6 +319,8 @@ class OpenArmRuntime:
             timeout_s=timeout_s,
         )
         started = time.monotonic()
+        left_wait_targets = dict(left_joints)
+        right_wait_targets = dict(right_joints)
         for step_index in range(1, steps + 1):
             alpha = self._interpolation_alpha(step_index / steps)
             left_step_targets = self._interpolate_joint_targets(left_current, left_joints, alpha)
@@ -327,13 +336,15 @@ class OpenArmRuntime:
                     f"right_{joint}.pos": float(right_step_targets[joint]) for joint in right_joints
                 }
             )
-            self.driver.send_action(action)
+            sent_action = self.driver.send_action(action)
+            left_wait_targets = self._extract_sent_targets(sent_action, "left")
+            right_wait_targets = self._extract_sent_targets(sent_action, "right")
             if step_index < steps:
                 time.sleep(self._step_interval_s())
         remaining_timeout = max(self._step_interval_s(), timeout_s - (time.monotonic() - started))
         self._wait_until_both_arms_close(
-            left_target_joints=left_joints,
-            right_target_joints=right_joints,
+            left_target_joints=left_wait_targets,
+            right_target_joints=right_wait_targets,
             timeout_s=remaining_timeout,
         )
         return {
@@ -552,6 +563,16 @@ class OpenArmRuntime:
         arm_key = f"{arm}_arm"
         joints = obs.get(arm_key, {}).get("joint_pos", {})
         return {str(k): float(v) for k, v in joints.items()}
+
+    def _extract_sent_targets(self, sent_action: dict[str, float], arm: str) -> dict[str, float]:
+        prefix = f"{arm}_"
+        targets: dict[str, float] = {}
+        for key, value in sent_action.items():
+            if not key.startswith(prefix) or not key.endswith(".pos"):
+                continue
+            joint = key[len(prefix) : -4]
+            targets[joint] = float(value)
+        return targets
 
     def _structure_observation(self, flat_obs: dict[str, Any]) -> dict[str, Any]:
         structured: dict[str, Any] = {

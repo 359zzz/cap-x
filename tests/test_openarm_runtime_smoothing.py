@@ -65,6 +65,15 @@ class ImmediateDriver:
         return dict(action)
 
 
+class ClampingImmediateDriver(ImmediateDriver):
+    def send_action(self, action: dict[str, float]) -> dict[str, float]:
+        actual = dict(action)
+        for key, value in list(actual.items()):
+            if key.endswith("gripper.pos"):
+                actual[key] = min(0.0, float(value))
+        return super().send_action(actual)
+
+
 def _runtime_for_smoothing(driver: ImmediateDriver) -> OpenArmRuntime:
     cfg = OpenArmRuntimeConfig()
     cfg.step_sleep_s = 0.001
@@ -109,3 +118,20 @@ def test_bimanual_motion_keeps_both_arms_on_the_same_interpolation_progress() ->
     assert all("left_joint_1.pos" in action for action in driver.sent_actions)
     assert all("right_joint_1.pos" in action for action in driver.sent_actions)
     assert all("left_joint_4.pos" in action for action in driver.sent_actions)
+
+
+def test_bimanual_motion_waits_for_actual_sent_targets_after_clamping() -> None:
+    driver = ClampingImmediateDriver()
+    driver.positions["left"]["gripper"] = 12.0
+    driver.positions["right"]["gripper"] = 11.0
+    runtime = _runtime_for_smoothing(driver)
+
+    final = runtime.move_both_arms_blocking(
+        {"gripper": 5.0},
+        {"gripper": 3.0},
+        speed="slow",
+        timeout_s=0.2,
+    )
+
+    assert final["left"]["gripper"] == 0.0
+    assert final["right"]["gripper"] == 0.0

@@ -146,7 +146,12 @@ class OpenArmFollower(CalibrationBackedDevice):
         if not self.is_calibrated and calibrate:
             self.calibrate()
         self.configure()
-        if self.is_calibrated:
+        if self.is_calibrated and self.config.zero_on_connect:
+            logger.warning(
+                "OpenArm %s is zeroing all motors on connect. "
+                "Use this only when the arm is already in the intended zero posture.",
+                self.config.side or "unknown",
+            )
             self.bus.set_zero_position()
         self.bus.enable_torque()
         logger.info("%s connected.", self)
@@ -271,6 +276,7 @@ class BiOpenArmFollower(CalibrationBackedDevice):
             max_relative_target=config.left_arm_config.max_relative_target,
             cameras=config.left_arm_config.cameras,
             side=config.left_arm_config.side,
+            zero_on_connect=config.left_arm_config.zero_on_connect,
             can_interface=config.left_arm_config.can_interface,
             use_can_fd=config.left_arm_config.use_can_fd,
             can_bitrate=config.left_arm_config.can_bitrate,
@@ -288,6 +294,7 @@ class BiOpenArmFollower(CalibrationBackedDevice):
             max_relative_target=config.right_arm_config.max_relative_target,
             cameras=config.right_arm_config.cameras,
             side=config.right_arm_config.side,
+            zero_on_connect=config.right_arm_config.zero_on_connect,
             can_interface=config.right_arm_config.can_interface,
             use_can_fd=config.right_arm_config.use_can_fd,
             can_bitrate=config.right_arm_config.can_bitrate,

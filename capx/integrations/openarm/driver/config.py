@@ -62,6 +62,7 @@ class OpenArmFollowerConfig:
     id: str | None = None
     calibration_dir: Path | None = None
     side: str | None = None
+    zero_on_connect: bool = False
     can_interface: str = "socketcan"
     use_can_fd: bool = True
     can_bitrate: int = 1_000_000
