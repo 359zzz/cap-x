@@ -16,7 +16,7 @@ class RobotShellConfig:
 
     relay_base_url: str = "http://127.0.0.1:8200"
     config_path: str | None = None
-    model: str = "openai/gpt-5.4"
+    model: str = "qwen3.5-plus"
     server_url: str = "http://127.0.0.1:8110/chat/completions"
     temperature: float = 0.2
     max_tokens: int = 8192

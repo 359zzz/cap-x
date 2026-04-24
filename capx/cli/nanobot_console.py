@@ -9,6 +9,7 @@ from capx.nanobot import (
     MessageBus,
     RobotShellConfig,
 )
+from capx.nanobot.console_io import read_console_line
 
 
 async def _print_outbound(bus: MessageBus) -> None:
@@ -51,7 +52,10 @@ async def _run_console(args: argparse.Namespace) -> None:
 
     try:
         while True:
-            text = await asyncio.to_thread(input, "You: ")
+            try:
+                text = await asyncio.to_thread(read_console_line, "You: ")
+            except EOFError:
+                break
             if text.strip().lower() in {"exit", "quit"}:
                 break
             await bus.publish_inbound(
@@ -87,7 +91,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default="openai/gpt-5.4",
+        default="qwen3.5-plus",
         help="Model name passed to cap-x.",
     )
     parser.add_argument(

@@ -29,7 +29,7 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
         help="Default cap-x YAML config path used when starting a new task.",
     )
-    parser.add_argument("--model", default="openai/gpt-5.4", help="Model name passed to cap-x.")
+    parser.add_argument("--model", default="qwen3.5-plus", help="Model name passed to cap-x.")
     parser.add_argument(
         "--llm-server-url",
         default="http://127.0.0.1:8110/chat/completions",

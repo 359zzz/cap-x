@@ -4,6 +4,7 @@ import asyncio
 from dataclasses import dataclass
 
 from capx.nanobot.messages import OutboundMessage
+from capx.nanobot.console_io import read_console_line
 
 from .base import BaseChannel, ChannelConfig
 
@@ -63,6 +64,6 @@ class ConsoleChannel(BaseChannel):
 
     async def _read_input(self, prompt: str) -> str | None:
         try:
-            return await asyncio.to_thread(input, prompt)
+            return await asyncio.to_thread(read_console_line, prompt)
         except EOFError:
             return None

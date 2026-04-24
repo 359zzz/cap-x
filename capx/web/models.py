@@ -301,13 +301,13 @@ class NanobotTaskStartRequest(BaseModel):
     config_path: str | None = None
     initial_instruction: str
     initial_media: list[str] = Field(default_factory=list)
-    model: str = "openai/gpt-5.4"
+    model: str = "qwen3.5-plus"
     server_url: str = "http://127.0.0.1:8110/chat/completions"
     temperature: float = 0.2
     max_tokens: int = 8192
     use_visual_feedback: bool | None = None
     use_img_differencing: bool | None = None
-    visual_differencing_model: str | None = "openai/gpt-5.4"
+    visual_differencing_model: str | None = "qwen3.5-plus"
     visual_differencing_model_server_url: str | None = "http://127.0.0.1:8110/chat/completions"
     await_user_input_each_turn: bool = True
     execution_timeout: int = 180

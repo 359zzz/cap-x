@@ -85,7 +85,7 @@ ENSEMBLE_CONFIGS = [
     # Gemini-3-Pro only — best single model per CaP-Bench (Figure 1).
     # 3 temps for diversity; synthesis still uses Gemini-3-Pro.
     # ~45% faster than full multimodel (no Claude/GPT latency bottleneck).
-    ("openai/gpt-5.4", [0.1, 0.5, 0.9]),
+    ("qwen3.5-plus", [0.1, 0.5, 0.9]),
 ]
 
 # ---------------------------------------------------------------------------
@@ -475,7 +475,7 @@ def query_model_streaming(
 def query_model_ensemble(
     args: "LaunchArgs | ModelQueryArgs",
     prompt: list[dict],
-    synthesis_model: str = "openai/gpt-5.4",
+    synthesis_model: str = "qwen3.5-plus",
     is_multiturn = False
 ) -> dict[str, Any]:
     """Query 9 models (3 models x 3 temperatures) and synthesize final output."""

@@ -27,7 +27,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default="openai/gpt-5.4",
+        default="qwen3.5-plus",
         help="Model name passed to cap-x.",
     )
     parser.add_argument(

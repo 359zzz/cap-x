@@ -16,7 +16,7 @@ def _print_payload(payload: dict[str, Any]) -> None:
 def _build_provider(args: argparse.Namespace) -> CustomProvider:
     api_key = args.api_key or os.getenv("LLM_API_KEY") or "no-key"
     api_base = args.api_base or os.getenv("LLM_BASE_URL") or "http://127.0.0.1:8110"
-    default_model = args.model or os.getenv("LLM_MODEL_NAME") or "openai/gpt-5.4"
+    default_model = args.model or os.getenv("LLM_MODEL_NAME") or "qwen3.5-plus"
     return CustomProvider(
         api_key=api_key,
         api_base=api_base,
@@ -82,7 +82,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--model",
         default=None,
-        help="Model name. Defaults to LLM_MODEL_NAME or openai/gpt-5.4.",
+        help="Model name. Defaults to LLM_MODEL_NAME or qwen3.5-plus.",
     )
     parser.add_argument(
         "--temperature",

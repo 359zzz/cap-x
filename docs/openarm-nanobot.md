@@ -67,7 +67,7 @@ $env:CAPX_WEB_BASE_URL = 'http://127.0.0.1:8200'
 
 # nanobot-compatible provider base URL
 $env:LLM_BASE_URL = 'http://127.0.0.1:8110'
-$env:LLM_MODEL_NAME = 'openai/gpt-5.4'
+$env:LLM_MODEL_NAME = 'qwen3.5-plus'
 $env:LLM_API_KEY = 'no-key'
 
 # cap-x expects a chat-completions endpoint
