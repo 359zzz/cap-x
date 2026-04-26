@@ -33,7 +33,7 @@ from pydantic import BaseModel, Field
 
 @dataclass
 class VisionGatewayConfig:
-    model: str = os.getenv("CAPX_OPENARM_VISION_MODEL", "qwen3.5-plus")
+    model: str = os.getenv("CAPX_OPENARM_VISION_MODEL", "qwen3.6-plus")
     server_url: str = os.getenv(
         "CAPX_OPENARM_VISION_SERVER_URL",
         os.getenv("CAPX_LLM_SERVER_URL", "http://127.0.0.1:8110/chat/completions"),

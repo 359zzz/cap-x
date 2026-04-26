@@ -4,11 +4,16 @@ import argparse
 import base64
 import json
 import mimetypes
-import os
 from pathlib import Path
 from typing import Any
 
 import requests
+
+from capx.utils.runtime_defaults import (
+    default_llm_model_name,
+    default_llm_server_url,
+    default_web_base_url,
+)
 
 
 def _print_payload(payload: dict[str, Any]) -> None:
@@ -25,7 +30,7 @@ def _optional_bool(value: str) -> bool:
 
 
 def _server_base_url(args: argparse.Namespace) -> str:
-    return (args.server or os.getenv("CAPX_WEB_BASE_URL") or "http://127.0.0.1:8200").rstrip("/")
+    return (args.server or default_web_base_url()).rstrip("/")
 
 
 def _load_media(values: list[str] | None) -> list[str]:
@@ -127,13 +132,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     start_parser.add_argument(
         "--model",
-        default="qwen3.5-plus",
-        help="LLM model name passed to cap-x.",
+        default=default_llm_model_name(),
+        help="LLM model name passed to cap-x. Defaults to LLM_MODEL_NAME or qwen3.6-plus.",
     )
     start_parser.add_argument(
         "--llm-server-url",
-        default="http://127.0.0.1:8110/chat/completions",
-        help="OpenAI-compatible chat completions endpoint used by cap-x.",
+        default=default_llm_server_url(),
+        help="OpenAI-compatible chat completions endpoint used by cap-x. Defaults to CAPX_LLM_SERVER_URL or http://127.0.0.1:8110/chat/completions.",
     )
     start_parser.add_argument(
         "--temperature",

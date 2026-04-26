@@ -1,8 +1,9 @@
 from __future__ import annotations
 
 import asyncio
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
+from capx.utils.runtime_defaults import default_llm_model_name, default_llm_server_url
 from capx.web.models import NanobotTaskStartRequest, NanobotTaskStatusResponse, SessionState
 
 from .bus import MessageBus
@@ -16,8 +17,8 @@ class RobotShellConfig:
 
     relay_base_url: str = "http://127.0.0.1:8200"
     config_path: str | None = None
-    model: str = "qwen3.5-plus"
-    server_url: str = "http://127.0.0.1:8110/chat/completions"
+    model: str = field(default_factory=default_llm_model_name)
+    server_url: str = field(default_factory=default_llm_server_url)
     temperature: float = 0.2
     max_tokens: int = 8192
     use_visual_feedback: bool | None = None

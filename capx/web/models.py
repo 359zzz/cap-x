@@ -8,6 +8,8 @@ from typing import Any
 
 from pydantic import BaseModel, Field
 
+from capx.utils.runtime_defaults import default_llm_model_name, default_llm_server_url
+
 
 # ============================================================================
 # Enums
@@ -301,14 +303,14 @@ class NanobotTaskStartRequest(BaseModel):
     config_path: str | None = None
     initial_instruction: str
     initial_media: list[str] = Field(default_factory=list)
-    model: str = "qwen3.5-plus"
-    server_url: str = "http://127.0.0.1:8110/chat/completions"
+    model: str = Field(default_factory=default_llm_model_name)
+    server_url: str = Field(default_factory=default_llm_server_url)
     temperature: float = 0.2
     max_tokens: int = 8192
     use_visual_feedback: bool | None = None
     use_img_differencing: bool | None = None
-    visual_differencing_model: str | None = "qwen3.5-plus"
-    visual_differencing_model_server_url: str | None = "http://127.0.0.1:8110/chat/completions"
+    visual_differencing_model: str | None = Field(default_factory=default_llm_model_name)
+    visual_differencing_model_server_url: str | None = Field(default_factory=default_llm_server_url)
     await_user_input_each_turn: bool = True
     execution_timeout: int = 180
 

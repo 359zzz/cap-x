@@ -9,6 +9,11 @@ from capx.nanobot import (
     ConsoleChannelConfig,
     RobotShellConfig,
 )
+from capx.utils.runtime_defaults import (
+    default_llm_model_name,
+    default_llm_server_url,
+    default_web_base_url,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -17,8 +22,8 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--server",
-        default="http://127.0.0.1:8200",
-        help="cap-x web relay base URL.",
+        default=default_web_base_url(),
+        help="cap-x web relay base URL. Defaults to CAPX_WEB_BASE_URL or http://127.0.0.1:8200.",
     )
     parser.add_argument(
         "--config-path",
@@ -27,13 +32,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--model",
-        default="qwen3.5-plus",
-        help="Model name passed to cap-x.",
+        default=default_llm_model_name(),
+        help="Model name passed to cap-x. Defaults to LLM_MODEL_NAME or qwen3.6-plus.",
     )
     parser.add_argument(
         "--llm-server-url",
-        default="http://127.0.0.1:8110/chat/completions",
-        help="OpenAI-compatible chat completions endpoint used by cap-x.",
+        default=default_llm_server_url(),
+        help="OpenAI-compatible chat completions endpoint used by cap-x. Defaults to CAPX_LLM_SERVER_URL or http://127.0.0.1:8110/chat/completions.",
     )
     parser.add_argument(
         "--temperature",
