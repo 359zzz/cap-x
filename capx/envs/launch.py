@@ -19,13 +19,14 @@ from __future__ import annotations
 
 import os
 import time
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
 import tyro
 
 from capx.utils.launch_utils import _load_config
+from capx.utils.runtime_defaults import default_llm_model_name, default_llm_server_url
 
 os.environ.setdefault("MUJOCO_GL", "egl")
 
@@ -46,10 +47,10 @@ class LaunchArgs:
     """Path to the YAML configuration file defining the environment and task."""
 
     # Model server configuration
-    server_url: str = "http://127.0.0.1:8110/chat/completions"
+    server_url: str = field(default_factory=default_llm_server_url)
     """URL of the vLLM server's chat completions endpoint."""
 
-    model: str = "google/gemini-3.1-pro-preview"
+    model: str = field(default_factory=default_llm_model_name)
     """Name of the model to query on from the server_url."""
 
     temperature: float = 1.0
@@ -80,12 +81,10 @@ class LaunchArgs:
     use_legacy_multi_turn_decision_prompt: bool | None = None
     """Whether to use the legacy multi-turn decision prompt."""
 
-    visual_differencing_model: str | None = "google/gemini-3.1-pro-preview"
+    visual_differencing_model: str | None = field(default_factory=default_llm_model_name)
     """Model to use for visual differencing."""
 
-    visual_differencing_model_server_url: str | None = (
-        "http://127.0.0.1:8110/chat/completions"
-    )
+    visual_differencing_model_server_url: str | None = field(default_factory=default_llm_server_url)
     """Server URL of the image differencing model."""
 
     visual_differencing_model_api_key: str | None = None

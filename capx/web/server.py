@@ -20,6 +20,7 @@ from fastapi.staticfiles import StaticFiles
 
 from capx.envs.configs.instantiate import instantiate
 from capx.utils.launch_utils import _load_config
+from capx.utils.runtime_defaults import default_llm_model_name, default_llm_server_url
 from capx.web.async_trial_runner import LaunchArgsCompat, run_trial_async
 from capx.web.models import (
     ConfigListResponse,
@@ -279,16 +280,16 @@ def create_app() -> FastAPI:
             @dataclass
             class MinimalArgs:
                 config_path: str
-                server_url: str = "http://127.0.0.1:8110/chat/completions"
-                model: str = "google/gemini-3.1-pro-preview"
+                server_url: str = default_llm_server_url()
+                model: str = default_llm_model_name()
                 temperature: float = 1.0
                 max_tokens: int = 20480
                 reasoning_effort: str = "medium"
                 api_key: str | None = None
                 use_visual_feedback: bool | None = None
                 use_img_differencing: bool | None = None
-                visual_differencing_model: str | None = "google/gemini-3.1-pro-preview"
-                visual_differencing_model_server_url: str | None = "http://127.0.0.1:8110/chat/completions"
+                visual_differencing_model: str | None = default_llm_model_name()
+                visual_differencing_model_server_url: str | None = default_llm_server_url()
                 visual_differencing_model_api_key: str | None = None
                 total_trials: int | None = None
                 num_workers: int | None = None

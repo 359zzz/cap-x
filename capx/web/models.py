@@ -256,14 +256,14 @@ class StartTrialRequest(BaseModel):
     """Request to start a trial."""
 
     config_path: str
-    model: str = "google/gemini-3.1-pro-preview"
-    server_url: str = "http://127.0.0.1:8110/chat/completions"
+    model: str = Field(default_factory=default_llm_model_name)
+    server_url: str = Field(default_factory=default_llm_server_url)
     temperature: float = 1.0
     max_tokens: int = 20480
     use_visual_feedback: bool | None = None
     use_img_differencing: bool | None = None
-    visual_differencing_model: str | None = "google/gemini-3.1-pro-preview"
-    visual_differencing_model_server_url: str | None = "http://127.0.0.1:8110/chat/completions"
+    visual_differencing_model: str | None = Field(default_factory=default_llm_model_name)
+    visual_differencing_model_server_url: str | None = Field(default_factory=default_llm_server_url)
     await_user_input_each_turn: bool = False
     execution_timeout: int = 180  # seconds per code block execution
 

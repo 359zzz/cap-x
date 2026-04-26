@@ -22,6 +22,7 @@ from PIL import Image
 
 from capx.envs.configs.instantiate import instantiate
 from capx.envs.configs.loader import DictLoader
+from capx.utils.runtime_defaults import default_llm_model_name, default_llm_server_url
 
 # Re-export LLM client symbols for backward compatibility
 from capx.llm.client import (  # noqa: F401
@@ -105,9 +106,9 @@ def _load_config(args: LaunchArgs) -> tuple[Any, dict[str, Any], list]:
     # Merge server URLs and VDM model settings from YAML into args
     # (CLI args take priority; YAML fills in when CLI uses defaults)
     _CLI_DEFAULTS = {
-        "server_url": "http://127.0.0.1:8110/chat/completions",
-        "visual_differencing_model": "google/gemini-3.1-pro-preview",
-        "visual_differencing_model_server_url": "http://127.0.0.1:8110/chat/completions",
+        "server_url": default_llm_server_url(),
+        "visual_differencing_model": default_llm_model_name(),
+        "visual_differencing_model_server_url": default_llm_server_url(),
         "visual_differencing_model_api_key": None,
     }
     for field, cli_default in _CLI_DEFAULTS.items():
