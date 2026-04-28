@@ -22,7 +22,7 @@ async def _print_outbound(bus: MessageBus) -> None:
         msg = await bus.consume_outbound()
         print()
         print("-" * 40)
-        print("Nanobot")
+        print("智能体（已接入千问大模型）")
         print("-" * 40)
         print(msg.content.rstrip())
         if msg.media:
@@ -56,7 +56,7 @@ async def _run_console(args: argparse.Namespace) -> None:
     printer_task = asyncio.create_task(_print_outbound(bus))
 
     print("-" * 40)
-    print("Capx Nanobot Console")
+    print("多模态智能体")
     print("-" * 40)
     print("输入自然语言指令")
     print("命令  /help  /status  /stop  exit")
@@ -65,7 +65,7 @@ async def _run_console(args: argparse.Namespace) -> None:
     try:
         while True:
             try:
-                text = await asyncio.to_thread(read_console_line, "You: ")
+                text = await asyncio.to_thread(read_console_line, "用户: ")
             except EOFError:
                 break
             if text.strip().lower() in {"exit", "quit"}:
