@@ -667,7 +667,7 @@ class OpenArmMotionExecutor:
         current_gripper = current.get("gripper")
         if current_gripper is None:
             return False
-        return float(target_gripper) < float(current_gripper) - 1e-6
+        return float(target_gripper) > float(current_gripper) + 1e-6
 
     def _execute_motion_combo_unlocked(
         self,

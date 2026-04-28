@@ -132,6 +132,6 @@ def test_move_to_named_pose_only_ignores_gripper_for_additional_closing() -> Non
     )
 
     assert runtime.both_calls == [
-        ({"joint_1": 10.0}, {"joint_2": -8.0, "gripper": -10.0}, "slow")
+        ({"joint_1": 10.0, "gripper": -55.0}, {"joint_2": -8.0}, "slow")
     ]
-    assert result["ignored_joints"] == ["left.gripper"]
+    assert result["ignored_joints"] == ["right.gripper"]

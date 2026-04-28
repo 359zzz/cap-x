@@ -360,7 +360,9 @@ class OpenArmRuntime:
         blocking: bool = True,
     ) -> float:
         fraction = float(np.clip(fraction, 0.0, 1.0))
-        gripper_pos = -65.0 + 65.0 * fraction
+        # OpenArm grippers are zeroed in the mechanically closed posture, so
+        # larger opening commands move toward the negative limit.
+        gripper_pos = -65.0 * fraction
         self.move_arm_joints_blocking(arm, {"gripper": gripper_pos}, speed="slow")
         if blocking:
             time.sleep(self.config.step_sleep_s)
