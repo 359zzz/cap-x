@@ -439,20 +439,20 @@ python -m capx.cli.openarm_assets record-combo hand_to_chest --arm-mode single -
 python -m capx.cli.openarm_assets record-combo both_arms_open --arm-mode both --magnitude medium
 ```
 
-Tomato-picking example with `left=can3` and `right=can2`:
+Tomato-picking example with `left=can1` and `right=can0`:
 
 ```bash
-sudo ip link set can3 down
-sudo ip link set can3 type can bitrate 1000000 dbitrate 5000000 fd on
-sudo ip link set can3 up
+sudo ip link set can1 down
+sudo ip link set can1 type can bitrate 1000000 dbitrate 5000000 fd on
+sudo ip link set can1 up
 
-sudo ip link set can2 down
-sudo ip link set can2 type can bitrate 1000000 dbitrate 5000000 fd on
-sudo ip link set can2 up
+sudo ip link set can0 down
+sudo ip link set can0 type can bitrate 1000000 dbitrate 5000000 fd on
+sudo ip link set can0 up
 
 python scripts/openarm_record_tomato_sequence.py \
-  --left-port can3 \
-  --right-port can2 \
+  --left-port can1 \
+  --right-port can0 \
   --task-arm left \
   --print-can-setup
 ```

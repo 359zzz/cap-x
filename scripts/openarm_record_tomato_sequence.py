@@ -89,13 +89,13 @@ def build_parser() -> argparse.ArgumentParser:
     )
     parser.add_argument(
         "--left-port",
-        default="can3",
-        help="OpenArm left CAN channel, for example can3.",
+        default="can1",
+        help="OpenArm left CAN channel, for example can1.",
     )
     parser.add_argument(
         "--right-port",
-        default="can2",
-        help="OpenArm right CAN channel, for example can2.",
+        default="can0",
+        help="OpenArm right CAN channel, for example can0.",
     )
     parser.add_argument(
         "--asset-root",
