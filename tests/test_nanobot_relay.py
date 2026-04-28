@@ -6,6 +6,7 @@ import json
 from capx.web.models import SessionState
 from capx.web.nanobot_relay import (
     apply_initial_instruction_to_env_factory,
+    build_forced_initial_code,
     build_nanobot_task_status,
 )
 from capx.web.session_manager import Session, SessionManager
@@ -81,6 +82,39 @@ def test_apply_initial_instruction_to_env_factory_adds_visual_then_anchor_hints(
     assert "same code block" in prompt
     assert "Do not finish immediately after a successful detection." in prompt
     assert "safe_standby" in prompt
+
+
+def test_build_forced_initial_code_for_visual_then_anchor_tomato_script() -> None:
+    code = build_forced_initial_code(
+        (
+            "First use vision to confirm there is a tomato in the camera view, then run "
+            "tomato_dual_locate_ready, tomato_dual_grasp_sync, tomato_dual_detach_lift, "
+            "tomato_dual_place_down, and finally safe_standby. If the gripper cannot fully "
+            "reach the recorded value, continue anyway."
+        )
+    )
+
+    assert code is not None
+    assert 'detect_target("tomato")' in code
+    assert 'move_to_named_pose("tomato_dual_locate_ready", ignore_gripper_when_closing=True)' in code
+    assert 'move_to_named_pose("safe_standby", ignore_gripper_when_closing=True)' in code
+    assert "Target 'tomato' detected. Executing anchor sequence." in code
+
+
+def test_build_forced_initial_code_supports_chinese_visual_instruction() -> None:
+    instruction = (
+        "\u5148\u7528\u89c6\u89c9\u786e\u8ba4\u5f53\u524d\u753b\u9762\u91cc\u6709\u756a\u8304\uff1b"
+        "\u5982\u679c\u68c0\u6d4b\u5230\u756a\u8304\uff0c\u7acb\u5373\u6309\u987a\u5e8f\u6267\u884c "
+        "tomato_dual_locate_ready\u3001tomato_dual_grasp_sync\u3001"
+        "tomato_dual_detach_lift\u3001tomato_dual_place_down\uff0c"
+        "\u6700\u540e\u6267\u884c safe_standby\u3002"
+    )
+
+    code = build_forced_initial_code(instruction)
+
+    assert code is not None
+    assert 'detect_target("tomato")' in code
+    assert 'move_to_named_pose("tomato_dual_detach_lift")' in code
 
 
 def test_build_nanobot_task_status_summarizes_session_history() -> None:

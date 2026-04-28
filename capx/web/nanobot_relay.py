@@ -89,6 +89,51 @@ def apply_initial_instruction_to_env_factory(
     return updated
 
 
+def build_forced_initial_code(instruction: str | None) -> str | None:
+    if not instruction or not instruction.strip():
+        return None
+
+    clean_instruction = instruction.strip()
+    anchor_names = _extract_anchor_names(clean_instruction)
+    if not anchor_names:
+        return None
+    if not _instruction_mentions_visual_check(clean_instruction):
+        return None
+
+    target_name = _extract_visual_target_name(clean_instruction)
+    if not target_name:
+        return None
+
+    use_relaxed_gripper = _instruction_mentions_relaxed_gripper(clean_instruction)
+    move_suffix = ", ignore_gripper_when_closing=True" if use_relaxed_gripper else ""
+    move_lines = "\n".join(
+        f'move_to_named_pose("{anchor}"{move_suffix})' for anchor in anchor_names
+    )
+
+    return (
+        f'detection = detect_target("{target_name}")\n'
+        'detections = detection.get("detections") or []\n'
+        "if not detections:\n"
+        f'    print("Target \'{target_name}\' not detected.")\n'
+        "    RESULT = {\n"
+        '        "success": False,\n'
+        '        "target_detected": False,\n'
+        f'        "target": "{target_name}",\n'
+        '        "detection": detection,\n'
+        "    }\n"
+        "else:\n"
+        f'    print("Target \'{target_name}\' detected. Executing anchor sequence.")\n'
+        + "\n".join(f"    {line}" for line in move_lines.splitlines())
+        + "\n"
+        "    RESULT = {\n"
+        '        "success": True,\n'
+        '        "target_detected": True,\n'
+        f'        "target": "{target_name}",\n'
+        '        "detection": detection,\n'
+        "    }\n"
+    )
+
+
 def build_nanobot_task_status(session: Session, *, max_events: int = 10) -> dict[str, Any]:
     """Build a compact task summary suitable for nanobot/app polling."""
     parsed_events = _parse_event_history(session.event_history)
@@ -308,6 +353,13 @@ def _instruction_mentions_visual_check(instruction: str) -> bool:
         "画面",
     )
     return any(keyword in lowered for keyword in keywords)
+
+
+def _extract_visual_target_name(instruction: str) -> str | None:
+    lowered = instruction.lower()
+    if "tomato" in lowered or "番茄" in instruction:
+        return "tomato"
+    return None
 
 
 def _format_state_label(value: object) -> str:

@@ -406,71 +406,74 @@ async def run_trial_async(
         ))
 
         logger.info("Querying model for initial code generation (streaming)")
-
-        # Use queue for true streaming from thread to async
-        chunk_queue: asyncio.Queue = asyncio.Queue()
-
-        # Capture event loop BEFORE starting thread (critical!)
-        main_loop = asyncio.get_running_loop()
-
-        def stream_to_queue():
-            """Run streaming query and put chunks in queue."""
-            try:
-                for chunk in _query_model_streaming(args, obs["full_prompt"]):
-                    # Use the captured loop reference, not get_event_loop()
-                    asyncio.run_coroutine_threadsafe(
-                        chunk_queue.put(chunk),
-                        main_loop
-                    )
-            except Exception as e:
-                asyncio.run_coroutine_threadsafe(
-                    chunk_queue.put({"type": "error", "error": str(e)}),
-                    main_loop
-                )
-
-        # Start streaming in background thread
-        stream_task = main_loop.run_in_executor(None, stream_to_queue)
-
         raw_code = ""
         reasoning = None
+        forced_initial_code = session.config.get("nanobot_forced_initial_code")
+        if isinstance(forced_initial_code, str) and forced_initial_code.strip():
+            raw_code = forced_initial_code.strip()
+            initial_blocks = [raw_code]
+        else:
+            # Use queue for true streaming from thread to async
+            chunk_queue: asyncio.Queue = asyncio.Queue()
 
-        # Process chunks as they arrive
-        while True:
-            if is_cancelled():
-                raise asyncio.CancelledError("Cancelled during initial code generation")
+            # Capture event loop BEFORE starting thread (critical!)
+            main_loop = asyncio.get_running_loop()
 
-            try:
-                chunk = await asyncio.wait_for(chunk_queue.get(), timeout=1.0)
-            except asyncio.TimeoutError:
-                # Check if thread is still running
-                if stream_task.done():
+            def stream_to_queue():
+                """Run streaming query and put chunks in queue."""
+                try:
+                    for chunk in _query_model_streaming(args, obs["full_prompt"]):
+                        # Use the captured loop reference, not get_event_loop()
+                        asyncio.run_coroutine_threadsafe(
+                            chunk_queue.put(chunk),
+                            main_loop
+                        )
+                except Exception as e:
+                    asyncio.run_coroutine_threadsafe(
+                        chunk_queue.put({"type": "error", "error": str(e)}),
+                        main_loop
+                    )
+
+            # Start streaming in background thread
+            stream_task = main_loop.run_in_executor(None, stream_to_queue)
+
+            # Process chunks as they arrive
+            while True:
+                if is_cancelled():
+                    raise asyncio.CancelledError("Cancelled during initial code generation")
+
+                try:
+                    chunk = await asyncio.wait_for(chunk_queue.get(), timeout=1.0)
+                except asyncio.TimeoutError:
+                    # Check if thread is still running
+                    if stream_task.done():
+                        break
+                    continue
+
+                if chunk["type"] == "content_delta":
+                    await emit(ModelStreamingDeltaEvent(
+                        session_id=session.session_id,
+                        content_delta=chunk["content"],
+                    ))
+                elif chunk["type"] == "reasoning_delta":
+                    await emit(ModelStreamingDeltaEvent(
+                        session_id=session.session_id,
+                        reasoning_delta=chunk["content"],
+                    ))
+                elif chunk["type"] == "done":
+                    raw_code = chunk["content"]
+                    reasoning = chunk.get("reasoning")
                     break
-                continue
+                elif chunk["type"] == "error":
+                    raise RuntimeError(f"Streaming error: {chunk['error']}")
 
-            if chunk["type"] == "content_delta":
-                await emit(ModelStreamingDeltaEvent(
-                    session_id=session.session_id,
-                    content_delta=chunk["content"],
-                ))
-            elif chunk["type"] == "reasoning_delta":
-                await emit(ModelStreamingDeltaEvent(
-                    session_id=session.session_id,
-                    reasoning_delta=chunk["content"],
-                ))
-            elif chunk["type"] == "done":
-                raw_code = chunk["content"]
-                reasoning = chunk.get("reasoning")
-                break
-            elif chunk["type"] == "error":
-                raise RuntimeError(f"Streaming error: {chunk['error']}")
+            # Wait for thread to complete
+            await stream_task
 
-        # Wait for thread to complete
-        await stream_task
+            if not raw_code:
+                raise ValueError("Model returned empty response during streaming")
 
-        if not raw_code:
-            raise ValueError("Model returned empty response during streaming")
-
-        initial_blocks = _extract_code(raw_code)
+            initial_blocks = _extract_code(raw_code)
         code_blocks.extend(initial_blocks)
         code_block_metadata.extend([{"generation": 0, "regenerated": False}] * len(initial_blocks))
 

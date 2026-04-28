@@ -42,6 +42,7 @@ from capx.web.models import (
 )
 from capx.web.nanobot_relay import (
     apply_initial_instruction_to_env_factory,
+    build_forced_initial_code,
     build_nanobot_task_status,
 )
 from capx.web.session_manager import Session, get_session_manager
@@ -187,6 +188,9 @@ def create_app() -> FastAPI:
             if initial_instruction:
                 env_factory = apply_initial_instruction_to_env_factory(env_factory, initial_instruction)
                 config["nanobot_initial_instruction"] = initial_instruction
+                forced_code = build_forced_initial_code(initial_instruction)
+                if forced_code:
+                    config["nanobot_forced_initial_code"] = forced_code
             if initial_media:
                 config["nanobot_initial_media"] = list(initial_media)
 
