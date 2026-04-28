@@ -102,13 +102,13 @@ def test_robot_shell_starts_task_from_plain_message() -> None:
                     channel="cli",
                     sender_id="user-1",
                     chat_id="chat-1",
-                    content="把左手抬到胸前",
+                    content="Raise the left arm a little.",
                 )
             )
             content = await _get_one_outbound(bus)
-            assert "已启动机器人任务" in content
+            assert "Task started." in content
             assert len(client.start_calls) == 1
-            assert client.start_calls[0].initial_instruction == "把左手抬到胸前"
+            assert client.start_calls[0].initial_instruction == "Raise the left arm a little."
         finally:
             await shell.stop()
 
@@ -132,7 +132,7 @@ def test_robot_shell_forwards_initial_media_to_start_request() -> None:
                     channel="cli",
                     sender_id="user-1",
                     chat_id="chat-1",
-                    content="describe attached image",
+                    content="Describe the attached image.",
                     media=[image],
                 )
             )
@@ -161,7 +161,7 @@ def test_robot_shell_status_forwards_visual_media() -> None:
                     channel="cli",
                     sender_id="user-1",
                     chat_id="chat-1",
-                    content="鍚姩浠诲姟",
+                    content="Start a task.",
                 )
             )
             await _get_one_outbound(bus)
@@ -217,7 +217,7 @@ def test_robot_shell_injects_followup_when_task_awaits_input() -> None:
                     channel="cli",
                     sender_id="user-1",
                     chat_id="chat-1",
-                    content="先启动任务",
+                    content="Start the task.",
                 )
             )
             await _get_one_outbound(bus)
@@ -238,12 +238,12 @@ def test_robot_shell_injects_followup_when_task_awaits_input() -> None:
                     channel="cli",
                     sender_id="user-1",
                     chat_id="chat-1",
-                    content="改成轻微张开左腕",
+                    content="Switch to a smaller arm opening.",
                 )
             )
             content = await _get_one_outbound(bus)
-            assert "已把新指令注入到当前任务" in content
-            assert client.inject_calls == [("task-1", "改成轻微张开左腕")]
+            assert "Task updated." in content
+            assert client.inject_calls == [("task-1", "Switch to a smaller arm opening.")]
             assert client.inject_media_calls == [[]]
         finally:
             await shell.stop()
@@ -267,7 +267,7 @@ def test_robot_shell_forwards_followup_media_to_injection() -> None:
                     channel="cli",
                     sender_id="user-1",
                     chat_id="chat-1",
-                    content="start task",
+                    content="Start task",
                 )
             )
             await _get_one_outbound(bus)
@@ -289,12 +289,12 @@ def test_robot_shell_forwards_followup_media_to_injection() -> None:
                     channel="cli",
                     sender_id="user-1",
                     chat_id="chat-1",
-                    content="continue with this image",
+                    content="Continue with this image.",
                     media=[image],
                 )
             )
             await _get_one_outbound(bus)
-            assert client.inject_calls == [("task-1", "continue with this image")]
+            assert client.inject_calls == [("task-1", "Continue with this image.")]
             assert client.inject_media_calls == [[image]]
         finally:
             await shell.stop()
@@ -318,7 +318,7 @@ def test_robot_shell_reports_busy_to_other_session() -> None:
                     channel="cli",
                     sender_id="user-1",
                     chat_id="chat-1",
-                    content="启动任务",
+                    content="Start a task.",
                 )
             )
             await _get_one_outbound(bus)
@@ -339,11 +339,11 @@ def test_robot_shell_reports_busy_to_other_session() -> None:
                     channel="cli",
                     sender_id="user-2",
                     chat_id="chat-2",
-                    content="我也想发一个新任务",
+                    content="I also want to start a new task.",
                 )
             )
             content = await _get_one_outbound(bus)
-            assert "暂时不能接收新自然语言" in content
+            assert "Another task is already active." in content
             assert len(client.start_calls) == 1
         finally:
             await shell.stop()

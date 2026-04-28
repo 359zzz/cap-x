@@ -97,11 +97,7 @@ class CapxNanobotRobotShell:
 
         lower = text.lower()
         if lower in {"/help", "help"}:
-            await self._reply(
-                msg.channel,
-                msg.chat_id,
-                self._help_text(),
-            )
+            await self._reply(msg.channel, msg.chat_id, self._help_text())
             return
         if lower == "/status":
             await self._handle_status(msg)
@@ -130,13 +126,16 @@ class CapxNanobotRobotShell:
                         text,
                         **inject_kwargs,
                     )
+                    state = action.task.state.value if action.task else "unknown"
                     await self._reply(
                         msg.channel,
                         msg.chat_id,
-                        (
-                            f"已把新指令注入到当前任务。\n"
-                            f"session_id: {action.session_id}\n"
-                            f"当前状态: {action.task.state.value if action.task else 'unknown'}"
+                        "\n".join(
+                            (
+                                "Task updated.",
+                                f"session_id: {action.session_id}",
+                                f"state: {state}",
+                            )
                         ),
                         metadata={"session_id": action.session_id, "action": "inject"},
                     )
@@ -173,14 +172,17 @@ class CapxNanobotRobotShell:
                 chat_id=msg.chat_id,
                 session_id=action.session_id,
             )
+            state = action.task.state.value if action.task else "unknown"
             await self._reply(
                 msg.channel,
                 msg.chat_id,
-                (
-                    f"已启动机器人任务。\n"
-                    f"session_id: {action.session_id}\n"
-                    f"当前状态: {action.task.state.value if action.task else 'unknown'}\n"
-                    f"可以继续发送自然语言；当任务进入 awaiting_user_input 时，我会把它作为后续指令注入。"
+                "\n".join(
+                    (
+                        "Task started.",
+                        f"session_id: {action.session_id}",
+                        f"state: {state}",
+                        "Follow-up natural-language instructions will be injected once the task reaches awaiting_user_input.",
+                    )
                 ),
                 metadata={"session_id": action.session_id, "action": "start"},
             )
@@ -194,7 +196,7 @@ class CapxNanobotRobotShell:
                 status = NanobotTaskStatusResponse.model_validate(active_task)
 
         if status is None:
-            await self._reply(msg.channel, msg.chat_id, "当前没有活跃机器人任务。")
+            await self._reply(msg.channel, msg.chat_id, "No active task.")
             return
 
         await self._reply(
@@ -214,17 +216,20 @@ class CapxNanobotRobotShell:
                 if isinstance(active_task, dict):
                     session_id = str(active_task.get("session_id") or "")
             if not session_id:
-                await self._reply(msg.channel, msg.chat_id, "当前没有可停止的活跃机器人任务。")
+                await self._reply(msg.channel, msg.chat_id, "No active task to stop.")
                 return
 
             action = await asyncio.to_thread(self.client.stop_task, session_id)
+            state = action.task.state.value if action.task else "unknown"
             await self._reply(
                 msg.channel,
                 msg.chat_id,
-                (
-                    f"已发送停止命令。\n"
-                    f"session_id: {action.session_id}\n"
-                    f"当前状态: {action.task.state.value if action.task else 'unknown'}"
+                "\n".join(
+                    (
+                        "Stop requested.",
+                        f"session_id: {action.session_id}",
+                        f"state: {state}",
+                    )
                 ),
                 metadata={"session_id": action.session_id, "action": "stop"},
             )
@@ -239,14 +244,16 @@ class CapxNanobotRobotShell:
                 if status is None or self._owner_channel is None or self._owner_chat_id is None:
                     continue
 
+                latest_summary = status.recent_events[-1].summary if status.recent_events else None
+                latest_media = tuple(status.recent_events[-1].media) if status.recent_events else ()
                 signature = (
                     status.state,
                     status.current_block_index,
                     status.total_code_blocks,
                     status.can_accept_injection,
                     status.last_error,
-                    status.recent_events[-1].summary if status.recent_events else None,
-                    tuple(status.recent_events[-1].media) if status.recent_events else (),
+                    latest_summary,
+                    latest_media,
                 )
                 if signature != self._last_status_signature:
                     await self._reply(
@@ -267,7 +274,7 @@ class CapxNanobotRobotShell:
                     await self._reply(
                         self._owner_channel,
                         self._owner_chat_id,
-                        f"任务监控异常: {exc}",
+                        f"Task monitor error: {exc}",
                     )
 
     async def _get_known_task_status(self) -> NanobotTaskStatusResponse | None:
@@ -330,38 +337,57 @@ class CapxNanobotRobotShell:
         return media
 
     def _help_text(self) -> str:
-        return (
-            "可用命令:\n"
-            "/help - 查看帮助\n"
-            "/status - 查看当前机器人任务状态\n"
-            "/stop - 停止当前机器人任务\n"
-            "其他自然语言内容会被解释为:\n"
-            "- 没有任务时: 启动新任务\n"
-            "- 任务在 awaiting_user_input 时: 注入后续指令"
+        return "\n".join(
+            (
+                "Commands:",
+                "/help   Show this help text.",
+                "/status Show the active task summary.",
+                "/stop   Request the active task to stop.",
+                "Any other text starts a new task, or becomes follow-up guidance when the task is waiting for input.",
+            )
         )
 
     def _format_status_message(self, status: NanobotTaskStatusResponse) -> str:
-        recent = status.recent_events[-1].summary if status.recent_events else "暂无事件"
         lines = [
-            f"任务状态: {status.state.value}",
-            f"session_id: {status.session_id}",
-            f"代码块进度: {status.current_block_index}/{status.total_code_blocks}",
-            f"可注入新指令: {'是' if status.can_accept_injection else '否'}",
-            f"最近事件: {recent}",
+            "=== Nanobot ===",
+            f"State    {status.state.value}",
+            f"Session  {status.session_id}",
+            f"Blocks   {status.current_block_index}/{status.total_code_blocks}",
+            f"Inject   {'yes' if status.can_accept_injection else 'no'}",
         ]
         if status.last_error:
-            lines.append(f"最后错误: {status.last_error}")
+            lines.append(f"Error    {status.last_error}")
+
+        recent_lines = self._format_recent_events(status)
+        if recent_lines:
+            lines.append("")
+            lines.append("Recent")
+            lines.extend(recent_lines)
+
         if status.state == SessionState.AWAITING_USER_INPUT:
-            lines.append("现在可以直接发送下一条自然语言，我会把它注入到当前任务。")
+            lines.append("")
+            lines.append("Next")
+            lines.append("- Send the next natural-language instruction now.")
         if status.state in {SessionState.COMPLETE, SessionState.ERROR, SessionState.IDLE}:
-            lines.append("当前任务已结束，可以直接发送新任务。")
+            lines.append("")
+            lines.append("Next")
+            lines.append("- Send a new instruction to start another run.")
         return "\n".join(lines)
 
     def _format_busy_message(self, status: NanobotTaskStatusResponse) -> str:
-        recent = status.recent_events[-1].summary if status.recent_events else "暂无事件"
-        return (
-            f"机器人当前正在执行其他步骤，暂时不能接收新自然语言。\n"
-            f"当前状态: {status.state.value}\n"
-            f"最近事件: {recent}\n"
-            f"如果需要查看细节，请发送 /status。"
-        )
+        lines = [
+            "Another task is already active.",
+            f"State: {status.state.value}",
+        ]
+        recent_lines = self._format_recent_events(status)
+        if recent_lines:
+            lines.append("Recent:")
+            lines.extend(recent_lines)
+        lines.append("Use /status to inspect it.")
+        return "\n".join(lines)
+
+    def _format_recent_events(self, status: NanobotTaskStatusResponse) -> list[str]:
+        recent = list(status.recent_events[-3:])
+        if not recent:
+            return []
+        return [f"- {event.summary}" for event in reversed(recent)]

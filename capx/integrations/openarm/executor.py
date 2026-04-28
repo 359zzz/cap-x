@@ -22,9 +22,19 @@ class OpenArmMotionExecutor:
     def get_robot_state(self) -> dict[str, Any]:
         return self.runtime.get_robot_state()
 
-    def move_to_named_pose(self, name: str, *, speed: str = "slow") -> dict[str, Any]:
+    def move_to_named_pose(
+        self,
+        name: str,
+        *,
+        speed: str = "slow",
+        ignore_gripper: bool = False,
+    ) -> dict[str, Any]:
         with self.runtime.active_task(f"move_to_named_pose:{name}"):
-            return self._move_to_named_pose_unlocked(name, speed=speed)
+            return self._move_to_named_pose_unlocked(
+                name,
+                speed=speed,
+                ignore_gripper=ignore_gripper,
+            )
 
     def move_arm_joints_safe(
         self,
@@ -574,23 +584,44 @@ class OpenArmMotionExecutor:
                 recovery_anchor="safe_standby",
             )
 
-    def _move_to_named_pose_unlocked(self, name: str, *, speed: str = "slow") -> dict[str, Any]:
+    def _move_to_named_pose_unlocked(
+        self,
+        name: str,
+        *,
+        speed: str = "slow",
+        ignore_gripper: bool = False,
+    ) -> dict[str, Any]:
         anchor = self.registry.load_anchor(name)
+        ignored_joints = ["gripper"] if ignore_gripper else []
         if anchor.arm_mode == "single":
             arm, joints = next(iter(anchor.joints_by_arm.items()))
+            if ignore_gripper:
+                joints = {joint: value for joint, value in joints.items() if joint != "gripper"}
             final = self.runtime.move_arm_joints_blocking(arm, joints, speed=speed)
             return {
                 "success": True,
                 "anchor": name,
                 "arm_mode": "single",
+                "ignored_joints": ignored_joints,
                 "final_joints": {arm: final},
             }
+        left_joints = dict(anchor.joints_by_arm.get("left", {}))
+        right_joints = dict(anchor.joints_by_arm.get("right", {}))
+        if ignore_gripper:
+            left_joints.pop("gripper", None)
+            right_joints.pop("gripper", None)
         final = self.runtime.move_both_arms_blocking(
-            anchor.joints_by_arm.get("left", {}),
-            anchor.joints_by_arm.get("right", {}),
+            left_joints,
+            right_joints,
             speed=speed,
         )
-        return {"success": True, "anchor": name, "arm_mode": "both", "final_joints": final}
+        return {
+            "success": True,
+            "anchor": name,
+            "arm_mode": "both",
+            "ignored_joints": ignored_joints,
+            "final_joints": final,
+        }
 
     def _execute_motion_combo_unlocked(
         self,

@@ -33,6 +33,31 @@ def test_apply_initial_instruction_to_env_factory_is_non_mutating() -> None:
     assert env_factory["cfg"]["prompt"] == "Base prompt."
 
 
+def test_apply_initial_instruction_to_env_factory_adds_anchor_motion_hints() -> None:
+    env_factory = {
+        "cfg": {
+            "prompt": "Base prompt.",
+            "task_only_prompt": "Base task.",
+            "multi_turn_prompt": "Base multi turn.",
+        }
+    }
+
+    updated = apply_initial_instruction_to_env_factory(
+        env_factory,
+        (
+            "Run tomato_dual_locate_ready, tomato_dual_grasp_sync, "
+            "then safe standby. If the gripper cannot fully reach the recorded value, continue anyway."
+        ),
+    )
+
+    prompt = updated["cfg"]["prompt"]
+    assert "Nanobot Instruction Hints" in prompt
+    assert "tomato_dual_locate_ready" in prompt
+    assert "safe_standby" in prompt
+    assert "ignore_gripper=True" in prompt
+    assert "avoid perception tools" in updated["cfg"]["multi_turn_prompt"]
+
+
 def test_build_nanobot_task_status_summarizes_session_history() -> None:
     session = Session(
         session_id="session-1",
@@ -125,6 +150,35 @@ def test_build_nanobot_task_status_includes_image_analysis_media() -> None:
 
     assert status["recent_events"][0]["summary"] == "initial_description: A red block is on the table."
     assert status["recent_events"][0]["media"] == [image]
+
+
+def test_build_nanobot_task_status_skips_streaming_deltas_and_summarizes_planning() -> None:
+    session = Session(
+        session_id="session-4",
+        state=SessionState.RUNNING,
+        config_path="env_configs/openarm/openarm_motion_real.yaml",
+    )
+    session.event_history = [
+        json.dumps(
+            {
+                "type": "model_streaming_start",
+                "timestamp": "2026-04-09T10:03:00Z",
+                "phase": "multi_turn_decision",
+            }
+        ),
+        json.dumps(
+            {
+                "type": "model_streaming_delta",
+                "timestamp": "2026-04-09T10:03:01Z",
+                "content_delta": "ignored",
+            }
+        ),
+    ]
+
+    status = build_nanobot_task_status(session)
+
+    assert len(status["recent_events"]) == 1
+    assert status["recent_events"][0]["summary"] == "model is planning the next step"
 
 
 def test_session_manager_can_reject_new_active_session() -> None:

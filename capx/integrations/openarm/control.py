@@ -331,11 +331,34 @@ class OpenArmControlApi(ApiBase):
         self._log_step_update(text=f"primitive={result.get('primitive')}")
         return result
 
-    def move_to_named_pose(self, name: str, speed: str = "slow") -> dict[str, Any]:
-        """Move to a recorded named anchor pose such as `home` or `safe_standby`."""
-        self._log_step("move_to_named_pose", f"Moving to anchor '{name}' ...")
-        result = self._executor.move_to_named_pose(name, speed=speed)
-        self._log_step_update(text=f"arm_mode={result.get('arm_mode')}")
+    def move_to_named_pose(
+        self,
+        name: str,
+        speed: str = "slow",
+        ignore_gripper: bool = False,
+    ) -> dict[str, Any]:
+        """Move to a recorded named anchor pose such as `home` or `safe_standby`.
+
+        Args:
+            name: Anchor asset name to execute.
+            speed: Named runtime speed profile.
+            ignore_gripper: When True, do not command the anchor gripper target. This is
+                useful when the gripper is already holding an object and should not block
+                the rest of the arm from reaching the anchor.
+        """
+        step_text = f"Moving to anchor '{name}' ..."
+        if ignore_gripper:
+            step_text = f"Moving to anchor '{name}' while holding current gripper state ..."
+        self._log_step("move_to_named_pose", step_text)
+        result = self._executor.move_to_named_pose(
+            name,
+            speed=speed,
+            ignore_gripper=ignore_gripper,
+        )
+        summary = f"arm_mode={result.get('arm_mode')}"
+        if result.get("ignored_joints"):
+            summary = f"{summary} ignored={','.join(result['ignored_joints'])}"
+        self._log_step_update(text=summary)
         return result
 
     def move_arm_joints_safe(

@@ -44,7 +44,14 @@ class FakeTaskClient:
         assert session_id == "task-1"
         return self.task_status
 
-    def inject_task(self, session_id: str, text: str) -> NanobotTaskActionResponse:
+    def inject_task(
+        self,
+        session_id: str,
+        text: str,
+        *,
+        media: list[str] | None = None,
+    ) -> NanobotTaskActionResponse:
+        del media
         self.inject_calls.append((session_id, text))
         return NanobotTaskActionResponse(
             status="injected",
@@ -95,7 +102,7 @@ def test_http_gateway_bridges_inbound_and_outbound_messages() -> None:
             json={
                 "chat_id": "chat-1",
                 "sender_id": "user-1",
-                "content": "把左手抬到胸前",
+                "content": "Raise the left arm to the chest.",
             },
         )
         assert inbound.status_code == 200
@@ -108,7 +115,7 @@ def test_http_gateway_bridges_inbound_and_outbound_messages() -> None:
         payload = outbound.json()
         assert outbound.status_code == 200
         assert payload["count"] == 1
-        assert "已启动机器人任务" in payload["messages"][0]["content"]
+        assert "Task started." in payload["messages"][0]["content"]
         assert len(fake_client.start_calls) == 1
 
         fake_client.task_status = NanobotTaskStatusResponse(
@@ -127,7 +134,7 @@ def test_http_gateway_bridges_inbound_and_outbound_messages() -> None:
             json={
                 "chat_id": "chat-1",
                 "sender_id": "user-1",
-                "content": "改成轻微张开左腕",
+                "content": "Switch to a smaller arm opening.",
             },
         )
         assert followup.status_code == 200
@@ -138,5 +145,5 @@ def test_http_gateway_bridges_inbound_and_outbound_messages() -> None:
         )
         payload = outbound.json()
         assert payload["count"] == 1
-        assert "已把新指令注入到当前任务" in payload["messages"][0]["content"]
-        assert fake_client.inject_calls == [("task-1", "改成轻微张开左腕")]
+        assert "Task updated." in payload["messages"][0]["content"]
+        assert fake_client.inject_calls == [("task-1", "Switch to a smaller arm opening.")]
