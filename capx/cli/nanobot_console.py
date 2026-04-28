@@ -21,14 +21,13 @@ async def _print_outbound(bus: MessageBus) -> None:
     while True:
         msg = await bus.consume_outbound()
         print()
-        print("=" * 40)
+        print("-" * 40)
         print("Nanobot")
-        print("=" * 40)
+        print("-" * 40)
         print(msg.content.rstrip())
         if msg.media:
             count = len(msg.media)
-            noun = "item" if count == 1 else "items"
-            print(f"Media attached: {count} {noun}")
+            print(f"图片  {count} 项")
         print()
 
 
@@ -56,11 +55,11 @@ async def _run_console(args: argparse.Namespace) -> None:
     await shell.start()
     printer_task = asyncio.create_task(_print_outbound(bus))
 
-    print("=" * 40)
+    print("-" * 40)
     print("Capx Nanobot Console")
-    print("=" * 40)
-    print("Enter natural-language robot instructions.")
-    print("Commands: /help  /status  /stop  exit")
+    print("-" * 40)
+    print("输入自然语言指令")
+    print("命令  /help  /status  /stop  exit")
     print()
 
     try:

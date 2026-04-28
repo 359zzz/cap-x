@@ -115,7 +115,8 @@ def test_http_gateway_bridges_inbound_and_outbound_messages() -> None:
         payload = outbound.json()
         assert outbound.status_code == 200
         assert payload["count"] == 1
-        assert "Task started." in payload["messages"][0]["content"]
+        assert "已启动" in payload["messages"][0]["content"]
+        assert "ID    task-1" in payload["messages"][0]["content"]
         assert len(fake_client.start_calls) == 1
 
         fake_client.task_status = NanobotTaskStatusResponse(
@@ -145,5 +146,6 @@ def test_http_gateway_bridges_inbound_and_outbound_messages() -> None:
         )
         payload = outbound.json()
         assert payload["count"] == 1
-        assert "Task updated." in payload["messages"][0]["content"]
+        assert "已更新" in payload["messages"][0]["content"]
+        assert "状态  等待指令" in payload["messages"][0]["content"]
         assert fake_client.inject_calls == [("task-1", "Switch to a smaller arm opening.")]

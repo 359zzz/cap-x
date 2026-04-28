@@ -106,7 +106,9 @@ def test_robot_shell_starts_task_from_plain_message() -> None:
                 )
             )
             content = await _get_one_outbound(bus)
-            assert "Task started." in content
+            assert "已启动" in content
+            assert "ID    task-1" in content
+            assert "状态  执行中" in content
             assert len(client.start_calls) == 1
             assert client.start_calls[0].initial_instruction == "Raise the left arm a little."
         finally:
@@ -242,7 +244,8 @@ def test_robot_shell_injects_followup_when_task_awaits_input() -> None:
                 )
             )
             content = await _get_one_outbound(bus)
-            assert "Task updated." in content
+            assert "已更新" in content
+            assert "状态  等待指令" in content
             assert client.inject_calls == [("task-1", "Switch to a smaller arm opening.")]
             assert client.inject_media_calls == [[]]
         finally:
@@ -343,7 +346,8 @@ def test_robot_shell_reports_busy_to_other_session() -> None:
                 )
             )
             content = await _get_one_outbound(bus)
-            assert "Another task is already active." in content
+            assert "当前任务占用中" in content
+            assert "状态  执行中" in content
             assert len(client.start_calls) == 1
         finally:
             await shell.stop()

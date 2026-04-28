@@ -100,7 +100,7 @@ def test_build_nanobot_task_status_summarizes_session_history() -> None:
     assert status["can_accept_injection"] is True
     assert status["active"] is True
     assert len(status["recent_events"]) == 2
-    assert status["recent_events"][-1]["summary"] == "Waiting for a follow-up instruction."
+    assert status["recent_events"][-1]["summary"] == "等待下一条指令"
     assert status["last_error"] is None
 
 
@@ -124,7 +124,7 @@ def test_build_nanobot_task_status_includes_last_error() -> None:
 
     assert status["active"] is False
     assert status["can_accept_injection"] is False
-    assert status["last_error"] == "Perception service unavailable."
+    assert status["last_error"] == "异常：Perception service unavailable."
 
 
 def test_build_nanobot_task_status_includes_image_analysis_media() -> None:
@@ -148,7 +148,7 @@ def test_build_nanobot_task_status_includes_image_analysis_media() -> None:
 
     status = build_nanobot_task_status(session)
 
-    assert status["recent_events"][0]["summary"] == "initial_description: A red block is on the table."
+    assert status["recent_events"][0]["summary"] == "视觉分析：A red block is on the table."
     assert status["recent_events"][0]["media"] == [image]
 
 
@@ -178,7 +178,7 @@ def test_build_nanobot_task_status_skips_streaming_deltas_and_summarizes_plannin
     status = build_nanobot_task_status(session)
 
     assert len(status["recent_events"]) == 1
-    assert status["recent_events"][0]["summary"] == "model is planning the next step"
+    assert status["recent_events"][0]["summary"] == "正在规划下一步"
 
 
 def test_session_manager_can_reject_new_active_session() -> None:

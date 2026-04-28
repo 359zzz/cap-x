@@ -24,6 +24,14 @@ _ANCHOR_TOKEN_BLACKLIST = {
     "ignore_gripper",
 }
 _SKIPPED_EVENT_TYPES = {"model_streaming_delta"}
+_SESSION_STATE_LABELS = {
+    "idle": "空闲",
+    "loading_config": "载入配置",
+    "running": "执行中",
+    "awaiting_user_input": "等待指令",
+    "complete": "已完成",
+    "error": "异常",
+}
 
 
 def apply_initial_instruction_to_env_factory(
@@ -128,48 +136,51 @@ def _parse_event_history(history: list[str]) -> list[dict[str, Any]]:
 def _event_summary(event: dict[str, Any]) -> str:
     event_type = event.get("type")
     if event_type == "state_update":
-        return f"state -> {event.get('state')}"
+        return f"状态切换为{_format_state_label(event.get('state'))}"
     if event_type == "environment_init":
+        status = str(event.get("status") or "")
         detail = event.get("message") or event.get("description_content") or ""
-        return f"environment {event.get('status')}: {_truncate(detail)}"
+        if status in {"starting", "building_description"}:
+            return "环境准备中"
+        if status in {"complete", "description_complete"}:
+            return "环境已就绪"
+        return f"环境  {_truncate(detail)}"
     if event_type == "model_thinking":
         phase = event.get("phase") or "unknown"
         if phase == "multi_turn_decision":
-            return "model is planning the next step"
-        return "model is generating the initial plan"
+            return "正在规划下一步"
+        return "正在生成初始动作"
     if event_type == "model_streaming_start":
         phase = event.get("phase") or "unknown"
         if phase == "multi_turn_decision":
-            return "model is planning the next step"
-        return "model is generating the initial plan"
+            return "正在规划下一步"
+        return "正在生成初始动作"
     if event_type == "model_streaming_end":
         decision = event.get("decision", "unknown")
         block_count = len(event.get("code_blocks", []) or [])
-        noun = "block" if block_count == 1 else "blocks"
-        return f"model chose {decision} and produced {block_count} code {noun}"
+        if decision == "finish":
+            return "规划结束"
+        if decision == "regenerate":
+            return f"已重规划，生成 {block_count} 段动作"
+        return f"已生成 {block_count} 段动作"
     if event_type == "code_execution_start":
-        return f"executing block {event.get('block_index')}"
+        return f"执行第 {_block_index_label(event.get('block_index'))} 段动作"
     if event_type == "code_execution_result":
-        return (
-            f"block {event.get('block_index')} success={event.get('success')} "
-            f"reward={event.get('reward')}"
-        )
+        success = bool(event.get("success"))
+        return f"第 {_block_index_label(event.get('block_index'))} 段{'完成' if success else '失败'}"
     if event_type == "execution_step":
         tool_name = event.get("tool_name") or "tool"
-        return f"{tool_name}: {_truncate(event.get('text') or '')}"
+        return _format_execution_step_summary(str(tool_name), str(event.get("text") or ""))
     if event_type == "user_prompt_request":
-        return _truncate(event.get("current_state_summary") or "awaiting user input")
+        return "等待下一条指令"
     if event_type == "trial_complete":
-        return (
-            f"trial complete success={event.get('success')} "
-            f"reward={event.get('total_reward')} task_completed={event.get('task_completed')}"
-        )
+        return "任务已完成" if event.get("success") else "任务已结束"
     if event_type == "error":
-        return _truncate(event.get("message") or "unknown error")
+        return f"异常：{_truncate(event.get('message') or 'unknown error')}"
     if event_type == "visual_feedback":
-        return _truncate(event.get("description") or "captured visual feedback")
+        return _truncate(event.get("description") or "已采集视觉反馈")
     if event_type == "image_analysis":
-        return f"{event.get('analysis_type')}: {_truncate(event.get('content') or '')}"
+        return f"视觉分析：{_truncate(event.get('content') or '')}"
     return _truncate(json.dumps(event, ensure_ascii=False))
 
 
@@ -262,3 +273,43 @@ def _instruction_mentions_relaxed_gripper(instruction: str) -> bool:
         "到不了位",
     )
     return any(keyword in lowered for keyword in keywords)
+
+
+def _format_state_label(value: object) -> str:
+    key = str(value or "").strip().lower()
+    return _SESSION_STATE_LABELS.get(key, key or "未知")
+
+
+def _block_index_label(value: object) -> int:
+    if isinstance(value, int):
+        return value + 1
+    try:
+        return int(value) + 1
+    except (TypeError, ValueError):
+        return 1
+
+
+def _format_execution_step_summary(tool_name: str, text: str) -> str:
+    clean = _truncate(text)
+    if tool_name == "move_to_named_pose":
+        match = re.search(r"anchor '([^']+)'", text)
+        if match:
+            return f"移动到 {match.group(1)}"
+        return "执行 anchor 动作"
+    if tool_name == "detect_target":
+        match = re.search(r"target '([^']+)'", text)
+        if match:
+            return f"识别 {match.group(1)}"
+        return "识别目标"
+    if tool_name == "align_to_target":
+        match = re.search(r"Aligning ([a-z]+) arm to target '([^']+)'", text)
+        if match:
+            return f"{match.group(1)} 臂对齐 {match.group(2)}"
+        return "执行目标对齐"
+    if tool_name == "execute_motion_combo":
+        return f"执行组合动作  {clean}"
+    if tool_name == "execute_motion_primitive":
+        return f"执行基础动作  {clean}"
+    if tool_name == "record_anchor":
+        return f"录制锚点  {clean}"
+    return clean
