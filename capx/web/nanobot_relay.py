@@ -218,16 +218,28 @@ def _truncate(text: str, limit: int = 180) -> str:
 def _build_instruction_hints(instruction: str) -> list[str]:
     anchor_names = _extract_anchor_names(instruction)
     wants_relaxed_gripper = _instruction_mentions_relaxed_gripper(instruction)
+    wants_visual_check = _instruction_mentions_visual_check(instruction)
     hints: list[str] = []
     if anchor_names:
         anchors = ", ".join(anchor_names)
         hints.append(f"Explicit anchor names detected: {anchors}.")
-        hints.append(
-            "Execute those anchors exactly in the order requested with move_to_named_pose(...)."
-        )
-        hints.append(
-            "Do not call describe_scene, detect_target, get_target_pose, align_to_target, or approach_target unless the user explicitly asks for vision."
-        )
+        if wants_visual_check:
+            hints.append(
+                "The user explicitly asked for a visual confirmation before the anchor script."
+            )
+            hints.append(
+                "Do exactly one visual confirmation step with detect_target(...) or describe_scene(...), then if the target is present, immediately execute the full anchor sequence with move_to_named_pose(...) in the same code block."
+            )
+            hints.append(
+                "If the target is not present, stop and report that it was not detected. Do not call align_to_target(...) or approach_target(...). Do not finish immediately after a successful detection."
+            )
+        else:
+            hints.append(
+                "Execute those anchors exactly in the order requested with move_to_named_pose(...)."
+            )
+            hints.append(
+                "Do not call describe_scene, detect_target, get_target_pose, align_to_target, or approach_target unless the user explicitly asks for vision."
+            )
     if anchor_names and wants_relaxed_gripper:
         hints.append(
             "For anchor moves that may need to keep holding an object, use move_to_named_pose(..., ignore_gripper_when_closing=True) so closing grips are still attempted, but the script can continue if only the gripper cannot fully finish a close."
@@ -271,6 +283,29 @@ def _instruction_mentions_relaxed_gripper(instruction: str) -> bool:
         "不能继续运动",
         "无法完全到位",
         "到不了位",
+    )
+    return any(keyword in lowered for keyword in keywords)
+
+
+def _instruction_mentions_visual_check(instruction: str) -> bool:
+    lowered = instruction.lower()
+    keywords = (
+        "vision",
+        "visual",
+        "camera",
+        "detect",
+        "look at",
+        "inspect",
+        "see",
+        "confirm",
+        "看到",
+        "看见",
+        "视觉",
+        "摄像头",
+        "识别",
+        "检测",
+        "确认",
+        "画面",
     )
     return any(keyword in lowered for keyword in keywords)
 

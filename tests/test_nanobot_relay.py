@@ -58,6 +58,31 @@ def test_apply_initial_instruction_to_env_factory_adds_anchor_motion_hints() -> 
     assert "avoid perception tools" in updated["cfg"]["multi_turn_prompt"]
 
 
+def test_apply_initial_instruction_to_env_factory_adds_visual_then_anchor_hints() -> None:
+    env_factory = {
+        "cfg": {
+            "prompt": "Base prompt.",
+            "task_only_prompt": "Base task.",
+            "multi_turn_prompt": "Base multi turn.",
+        }
+    }
+
+    updated = apply_initial_instruction_to_env_factory(
+        env_factory,
+        (
+            "First use vision to confirm there is a tomato in the camera view, then run "
+            "tomato_dual_locate_ready, tomato_dual_grasp_sync, tomato_dual_detach_lift, "
+            "tomato_dual_place_down, and finally safe_standby."
+        ),
+    )
+
+    prompt = updated["cfg"]["prompt"]
+    assert "visual confirmation" in prompt
+    assert "same code block" in prompt
+    assert "Do not finish immediately after a successful detection." in prompt
+    assert "safe_standby" in prompt
+
+
 def test_build_nanobot_task_status_summarizes_session_history() -> None:
     session = Session(
         session_id="session-1",
