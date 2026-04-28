@@ -368,6 +368,8 @@ class OpenArmControlApi(ApiBase):
         summary = f"arm_mode={result.get('arm_mode')}"
         if result.get("ignored_joints"):
             summary = f"{summary} ignored={','.join(result['ignored_joints'])}"
+        if result.get("tolerated_joints"):
+            summary = f"{summary} tolerant={','.join(result['tolerated_joints'])}"
         self._log_step_update(text=summary)
         return result
 

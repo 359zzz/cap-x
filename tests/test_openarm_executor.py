@@ -8,8 +8,8 @@ from capx.integrations.openarm.executor import OpenArmMotionExecutor
 
 class FakeRuntime:
     def __init__(self) -> None:
-        self.single_calls: list[tuple[str, dict[str, float], str]] = []
-        self.both_calls: list[tuple[dict[str, float], dict[str, float], str]] = []
+        self.single_calls: list[tuple[str, dict[str, float], str, set[str]]] = []
+        self.both_calls: list[tuple[dict[str, float], dict[str, float], str, set[str], set[str]]] = []
         self.positions = {
             "left": {"gripper": -40.0},
             "right": {"gripper": -40.0},
@@ -26,9 +26,10 @@ class FakeRuntime:
         joints: dict[str, float],
         *,
         speed: str = "slow",
+        tolerate_timeout_joints: set[str] | None = None,
     ) -> dict[str, float]:
         payload = dict(joints)
-        self.single_calls.append((arm, payload, speed))
+        self.single_calls.append((arm, payload, speed, set(tolerate_timeout_joints or ())))
         self.positions.setdefault(arm, {}).update(payload)
         return payload
 
@@ -38,10 +39,20 @@ class FakeRuntime:
         right_joints: dict[str, float],
         *,
         speed: str = "slow",
+        left_tolerate_timeout_joints: set[str] | None = None,
+        right_tolerate_timeout_joints: set[str] | None = None,
     ) -> dict[str, dict[str, float]]:
         left_payload = dict(left_joints)
         right_payload = dict(right_joints)
-        self.both_calls.append((left_payload, right_payload, speed))
+        self.both_calls.append(
+            (
+                left_payload,
+                right_payload,
+                speed,
+                set(left_tolerate_timeout_joints or ()),
+                set(right_tolerate_timeout_joints or ()),
+            )
+        )
         self.positions.setdefault("left", {}).update(left_payload)
         self.positions.setdefault("right", {}).update(right_payload)
         return {"left": left_payload, "right": right_payload}
@@ -80,7 +91,7 @@ def test_move_to_named_pose_can_ignore_gripper_for_bimanual_anchor() -> None:
     )
 
     assert runtime.both_calls == [
-        ({"joint_1": 10.0}, {"joint_2": -8.0}, "slow")
+        ({"joint_1": 10.0}, {"joint_2": -8.0}, "slow", set(), set())
     ]
     assert result["ignored_joints"] == ["left.gripper", "right.gripper"]
     assert result["final_joints"]["left"] == {"joint_1": 10.0}
@@ -104,12 +115,12 @@ def test_move_to_named_pose_keeps_gripper_when_not_ignored() -> None:
     result = executor.move_to_named_pose("right_front_mid")
 
     assert runtime.single_calls == [
-        ("right", {"joint_1": 5.0, "gripper": -30.0}, "slow")
+        ("right", {"joint_1": 5.0, "gripper": -30.0}, "slow", set())
     ]
     assert result["ignored_joints"] == []
 
 
-def test_move_to_named_pose_only_ignores_gripper_for_additional_closing() -> None:
+def test_move_to_named_pose_only_tolerates_gripper_timeout_for_additional_closing() -> None:
     runtime = FakeRuntime()
     runtime.positions["left"]["gripper"] = -40.0
     runtime.positions["right"]["gripper"] = -40.0
@@ -132,6 +143,13 @@ def test_move_to_named_pose_only_ignores_gripper_for_additional_closing() -> Non
     )
 
     assert runtime.both_calls == [
-        ({"joint_1": 10.0, "gripper": -55.0}, {"joint_2": -8.0}, "slow")
+        (
+            {"joint_1": 10.0, "gripper": -55.0},
+            {"joint_2": -8.0, "gripper": -10.0},
+            "slow",
+            set(),
+            {"gripper"},
+        )
     ]
-    assert result["ignored_joints"] == ["right.gripper"]
+    assert result["ignored_joints"] == []
+    assert result["tolerated_joints"] == ["right.gripper"]

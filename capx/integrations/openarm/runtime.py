@@ -259,6 +259,7 @@ class OpenArmRuntime:
         *,
         speed: str = "slow",
         timeout_s: float | None = None,
+        tolerate_timeout_joints: set[str] | None = None,
     ) -> dict[str, float]:
         self.ensure_connected()
         timeout_s = timeout_s or self.config.command_timeout_s
@@ -288,7 +289,12 @@ class OpenArmRuntime:
             if step_index < len(waypoints) - 1:
                 time.sleep(self._step_interval_s())
         remaining_timeout = max(self._step_interval_s(), timeout_s - (time.monotonic() - started))
-        self._wait_until_arm_close(arm, wait_targets, timeout_s=remaining_timeout)
+        self._wait_until_arm_close(
+            arm,
+            wait_targets,
+            timeout_s=remaining_timeout,
+            tolerate_timeout_joints=tolerate_timeout_joints,
+        )
         return self.get_arm_joint_positions(arm)
 
     def move_both_arms_blocking(
@@ -298,6 +304,8 @@ class OpenArmRuntime:
         *,
         speed: str = "slow",
         timeout_s: float | None = None,
+        left_tolerate_timeout_joints: set[str] | None = None,
+        right_tolerate_timeout_joints: set[str] | None = None,
     ) -> dict[str, dict[str, float]]:
         self.ensure_connected()
         timeout_s = timeout_s or self.config.command_timeout_s
@@ -346,6 +354,8 @@ class OpenArmRuntime:
             left_target_joints=left_wait_targets,
             right_target_joints=right_wait_targets,
             timeout_s=remaining_timeout,
+            left_tolerate_timeout_joints=left_tolerate_timeout_joints,
+            right_tolerate_timeout_joints=right_tolerate_timeout_joints,
         )
         return {
             "left": self.get_arm_joint_positions("left"),
@@ -517,17 +527,26 @@ class OpenArmRuntime:
         target_joints: dict[str, float],
         *,
         timeout_s: float,
+        tolerate_timeout_joints: set[str] | None = None,
     ) -> None:
+        tolerated = set(tolerate_timeout_joints or ())
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             current = self.get_arm_joint_positions(arm)
-            errors = [
-                abs(current.get(joint, target) - target)
-                for joint, target in target_joints.items()
-            ]
-            if not errors or max(errors) <= self.config.move_tolerance_deg:
+            if self._joints_within_tolerance(
+                current=current,
+                target_joints=target_joints,
+                tolerate_timeout_joints=tolerated,
+            ):
                 return
             time.sleep(self._step_interval_s())
+        current = self.get_arm_joint_positions(arm)
+        if self._joints_within_tolerance(
+            current=current,
+            target_joints=target_joints,
+            tolerate_timeout_joints=tolerated,
+        ):
+            return
         raise TimeoutError(f"Timed out waiting for {arm} joints to reach target {target_joints}")
 
     def _wait_until_both_arms_close(
@@ -536,30 +555,67 @@ class OpenArmRuntime:
         left_target_joints: dict[str, float],
         right_target_joints: dict[str, float],
         timeout_s: float,
+        left_tolerate_timeout_joints: set[str] | None = None,
+        right_tolerate_timeout_joints: set[str] | None = None,
     ) -> None:
+        left_tolerated = set(left_tolerate_timeout_joints or ())
+        right_tolerated = set(right_tolerate_timeout_joints or ())
         deadline = time.monotonic() + timeout_s
         while time.monotonic() < deadline:
             obs = self.get_observation()
             left_current = self._extract_arm_joint_positions(obs, "left")
             right_current = self._extract_arm_joint_positions(obs, "right")
-            left_errors = [
-                abs(left_current.get(joint, target) - target)
-                for joint, target in left_target_joints.items()
-            ]
-            right_errors = [
-                abs(right_current.get(joint, target) - target)
-                for joint, target in right_target_joints.items()
-            ]
             if (
-                (not left_errors or max(left_errors) <= self.config.move_tolerance_deg)
-                and (not right_errors or max(right_errors) <= self.config.move_tolerance_deg)
+                self._joints_within_tolerance(
+                    current=left_current,
+                    target_joints=left_target_joints,
+                    tolerate_timeout_joints=left_tolerated,
+                )
+                and self._joints_within_tolerance(
+                    current=right_current,
+                    target_joints=right_target_joints,
+                    tolerate_timeout_joints=right_tolerated,
+                )
             ):
                 return
             time.sleep(self._step_interval_s())
+        obs = self.get_observation()
+        left_current = self._extract_arm_joint_positions(obs, "left")
+        right_current = self._extract_arm_joint_positions(obs, "right")
+        if (
+            self._joints_within_tolerance(
+                current=left_current,
+                target_joints=left_target_joints,
+                tolerate_timeout_joints=left_tolerated,
+            )
+            and self._joints_within_tolerance(
+                current=right_current,
+                target_joints=right_target_joints,
+                tolerate_timeout_joints=right_tolerated,
+            )
+        ):
+            return
         raise TimeoutError(
             "Timed out waiting for both arms to reach targets "
             f"left={left_target_joints} right={right_target_joints}"
         )
+
+    def _joints_within_tolerance(
+        self,
+        *,
+        current: dict[str, float],
+        target_joints: dict[str, float],
+        tolerate_timeout_joints: set[str] | None = None,
+    ) -> bool:
+        tolerated = set(tolerate_timeout_joints or ())
+        failing = {
+            joint
+            for joint, target in target_joints.items()
+            if abs(current.get(joint, target) - target) > self.config.move_tolerance_deg
+        }
+        if not failing:
+            return True
+        return failing.issubset(tolerated)
 
     def _extract_arm_joint_positions(self, obs: dict[str, Any], arm: str) -> dict[str, float]:
         arm_key = f"{arm}_arm"

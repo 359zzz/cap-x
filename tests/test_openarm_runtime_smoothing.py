@@ -74,6 +74,19 @@ class ClampingImmediateDriver(ImmediateDriver):
         return super().send_action(actual)
 
 
+class BlockedClosingGripperDriver(ImmediateDriver):
+    def __init__(self, closing_stop_deg: float = -20.0) -> None:
+        super().__init__()
+        self.closing_stop_deg = closing_stop_deg
+
+    def send_action(self, action: dict[str, float]) -> dict[str, float]:
+        actual = dict(action)
+        for key, value in list(actual.items()):
+            if key.endswith("gripper.pos") and float(value) > self.closing_stop_deg:
+                actual[key] = self.closing_stop_deg
+        return super().send_action(actual)
+
+
 def _runtime_for_smoothing(driver: ImmediateDriver) -> OpenArmRuntime:
     cfg = OpenArmRuntimeConfig()
     cfg.step_sleep_s = 0.001
@@ -135,3 +148,20 @@ def test_bimanual_motion_waits_for_actual_sent_targets_after_clamping() -> None:
 
     assert final["left"]["gripper"] == 0.0
     assert final["right"]["gripper"] == 0.0
+
+
+def test_single_arm_motion_can_continue_when_only_closing_gripper_is_blocked() -> None:
+    driver = BlockedClosingGripperDriver(closing_stop_deg=-20.0)
+    driver.positions["left"]["gripper"] = -40.0
+    runtime = _runtime_for_smoothing(driver)
+
+    final = runtime.move_arm_joints_blocking(
+        "left",
+        {"joint_1": 8.0, "gripper": 0.0},
+        speed="slow",
+        timeout_s=0.2,
+        tolerate_timeout_joints={"gripper"},
+    )
+
+    assert final["joint_1"] == 8.0
+    assert final["gripper"] == -20.0

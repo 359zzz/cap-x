@@ -230,7 +230,7 @@ def _build_instruction_hints(instruction: str) -> list[str]:
         )
     if anchor_names and wants_relaxed_gripper:
         hints.append(
-            "For anchor moves that may need to keep holding an object, use move_to_named_pose(..., ignore_gripper_when_closing=True) so release/open anchors still execute their gripper targets."
+            "For anchor moves that may need to keep holding an object, use move_to_named_pose(..., ignore_gripper_when_closing=True) so closing grips are still attempted, but the script can continue if only the gripper cannot fully finish a close."
         )
     return hints
 

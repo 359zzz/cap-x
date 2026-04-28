@@ -596,45 +596,75 @@ class OpenArmMotionExecutor:
     ) -> dict[str, Any]:
         anchor = self.registry.load_anchor(name)
         ignored_joints: list[str] = []
+        tolerated_joints: list[str] = []
         if anchor.arm_mode == "single":
             arm, joints = next(iter(anchor.joints_by_arm.items()))
             joints, ignored_joints = self._resolve_anchor_joints(
                 arm=arm,
                 joints=joints,
                 ignore_gripper=ignore_gripper,
+            )
+            tolerate_timeout_joints = self._resolve_gripper_timeout_tolerance(
+                arm=arm,
+                joints=anchor.joints_by_arm.get(arm, {}),
+                ignore_gripper=ignore_gripper,
                 ignore_gripper_when_closing=ignore_gripper_when_closing,
             )
-            final = self.runtime.move_arm_joints_blocking(arm, joints, speed=speed)
+            tolerated_joints = [f"{arm}.{joint}" for joint in sorted(tolerate_timeout_joints)]
+            final = self.runtime.move_arm_joints_blocking(
+                arm,
+                joints,
+                speed=speed,
+                tolerate_timeout_joints=tolerate_timeout_joints,
+            )
             return {
                 "success": True,
                 "anchor": name,
                 "arm_mode": "single",
                 "ignored_joints": ignored_joints,
+                "tolerated_joints": tolerated_joints,
                 "final_joints": {arm: final},
             }
         left_joints, left_ignored = self._resolve_anchor_joints(
             arm="left",
             joints=anchor.joints_by_arm.get("left", {}),
             ignore_gripper=ignore_gripper,
-            ignore_gripper_when_closing=ignore_gripper_when_closing,
         )
         right_joints, right_ignored = self._resolve_anchor_joints(
             arm="right",
             joints=anchor.joints_by_arm.get("right", {}),
             ignore_gripper=ignore_gripper,
-            ignore_gripper_when_closing=ignore_gripper_when_closing,
         )
         ignored_joints = left_ignored + right_ignored
+        left_tolerate_timeout_joints = self._resolve_gripper_timeout_tolerance(
+            arm="left",
+            joints=anchor.joints_by_arm.get("left", {}),
+            ignore_gripper=ignore_gripper,
+            ignore_gripper_when_closing=ignore_gripper_when_closing,
+        )
+        right_tolerate_timeout_joints = self._resolve_gripper_timeout_tolerance(
+            arm="right",
+            joints=anchor.joints_by_arm.get("right", {}),
+            ignore_gripper=ignore_gripper,
+            ignore_gripper_when_closing=ignore_gripper_when_closing,
+        )
+        tolerated_joints = [
+            *[f"left.{joint}" for joint in sorted(left_tolerate_timeout_joints)],
+            *[f"right.{joint}" for joint in sorted(right_tolerate_timeout_joints)],
+        ]
         final = self.runtime.move_both_arms_blocking(
             left_joints,
             right_joints,
             speed=speed,
+            left_tolerate_timeout_joints=left_tolerate_timeout_joints,
+            right_tolerate_timeout_joints=right_tolerate_timeout_joints,
         )
         return {
             "success": True,
             "anchor": name,
             "arm_mode": "both",
             "ignored_joints": ignored_joints,
+            "tolerated_joints": tolerated_joints,
             "final_joints": final,
         }
 
@@ -644,7 +674,6 @@ class OpenArmMotionExecutor:
         arm: str,
         joints: dict[str, float],
         ignore_gripper: bool,
-        ignore_gripper_when_closing: bool,
     ) -> tuple[dict[str, float], list[str]]:
         resolved = dict(joints)
         ignored: list[str] = []
@@ -653,14 +682,24 @@ class OpenArmMotionExecutor:
         if ignore_gripper:
             resolved.pop("gripper", None)
             ignored.append(f"{arm}.gripper")
-            return resolved, ignored
-        if ignore_gripper_when_closing and self._anchor_gripper_target_is_more_closed(
-            arm=arm,
-            target_gripper=float(resolved["gripper"]),
-        ):
-            resolved.pop("gripper", None)
-            ignored.append(f"{arm}.gripper")
         return resolved, ignored
+
+    def _resolve_gripper_timeout_tolerance(
+        self,
+        *,
+        arm: str,
+        joints: dict[str, float],
+        ignore_gripper: bool,
+        ignore_gripper_when_closing: bool,
+    ) -> set[str]:
+        if ignore_gripper or "gripper" not in joints or not ignore_gripper_when_closing:
+            return set()
+        if self._anchor_gripper_target_is_more_closed(
+            arm=arm,
+            target_gripper=float(joints["gripper"]),
+        ):
+            return {"gripper"}
+        return set()
 
     def _anchor_gripper_target_is_more_closed(self, *, arm: str, target_gripper: float) -> bool:
         current = self.runtime.get_arm_joint_positions(arm)
