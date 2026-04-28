@@ -336,6 +336,7 @@ class OpenArmControlApi(ApiBase):
         name: str,
         speed: str = "slow",
         ignore_gripper: bool = False,
+        ignore_gripper_when_closing: bool = False,
     ) -> dict[str, Any]:
         """Move to a recorded named anchor pose such as `home` or `safe_standby`.
 
@@ -345,15 +346,24 @@ class OpenArmControlApi(ApiBase):
             ignore_gripper: When True, do not command the anchor gripper target. This is
                 useful when the gripper is already holding an object and should not block
                 the rest of the arm from reaching the anchor.
+            ignore_gripper_when_closing: When True, keep the current gripper state only for
+                anchor targets that would close further than the current gripper position.
+                Anchor targets that open the gripper will still be executed.
         """
         step_text = f"Moving to anchor '{name}' ..."
         if ignore_gripper:
             step_text = f"Moving to anchor '{name}' while holding current gripper state ..."
+        elif ignore_gripper_when_closing:
+            step_text = (
+                f"Moving to anchor '{name}' while allowing blocked close to hold current "
+                "gripper state ..."
+            )
         self._log_step("move_to_named_pose", step_text)
         result = self._executor.move_to_named_pose(
             name,
             speed=speed,
             ignore_gripper=ignore_gripper,
+            ignore_gripper_when_closing=ignore_gripper_when_closing,
         )
         summary = f"arm_mode={result.get('arm_mode')}"
         if result.get("ignored_joints"):

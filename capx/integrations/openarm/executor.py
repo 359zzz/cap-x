@@ -28,12 +28,14 @@ class OpenArmMotionExecutor:
         *,
         speed: str = "slow",
         ignore_gripper: bool = False,
+        ignore_gripper_when_closing: bool = False,
     ) -> dict[str, Any]:
         with self.runtime.active_task(f"move_to_named_pose:{name}"):
             return self._move_to_named_pose_unlocked(
                 name,
                 speed=speed,
                 ignore_gripper=ignore_gripper,
+                ignore_gripper_when_closing=ignore_gripper_when_closing,
             )
 
     def move_arm_joints_safe(
@@ -590,13 +592,18 @@ class OpenArmMotionExecutor:
         *,
         speed: str = "slow",
         ignore_gripper: bool = False,
+        ignore_gripper_when_closing: bool = False,
     ) -> dict[str, Any]:
         anchor = self.registry.load_anchor(name)
-        ignored_joints = ["gripper"] if ignore_gripper else []
+        ignored_joints: list[str] = []
         if anchor.arm_mode == "single":
             arm, joints = next(iter(anchor.joints_by_arm.items()))
-            if ignore_gripper:
-                joints = {joint: value for joint, value in joints.items() if joint != "gripper"}
+            joints, ignored_joints = self._resolve_anchor_joints(
+                arm=arm,
+                joints=joints,
+                ignore_gripper=ignore_gripper,
+                ignore_gripper_when_closing=ignore_gripper_when_closing,
+            )
             final = self.runtime.move_arm_joints_blocking(arm, joints, speed=speed)
             return {
                 "success": True,
@@ -605,11 +612,19 @@ class OpenArmMotionExecutor:
                 "ignored_joints": ignored_joints,
                 "final_joints": {arm: final},
             }
-        left_joints = dict(anchor.joints_by_arm.get("left", {}))
-        right_joints = dict(anchor.joints_by_arm.get("right", {}))
-        if ignore_gripper:
-            left_joints.pop("gripper", None)
-            right_joints.pop("gripper", None)
+        left_joints, left_ignored = self._resolve_anchor_joints(
+            arm="left",
+            joints=anchor.joints_by_arm.get("left", {}),
+            ignore_gripper=ignore_gripper,
+            ignore_gripper_when_closing=ignore_gripper_when_closing,
+        )
+        right_joints, right_ignored = self._resolve_anchor_joints(
+            arm="right",
+            joints=anchor.joints_by_arm.get("right", {}),
+            ignore_gripper=ignore_gripper,
+            ignore_gripper_when_closing=ignore_gripper_when_closing,
+        )
+        ignored_joints = left_ignored + right_ignored
         final = self.runtime.move_both_arms_blocking(
             left_joints,
             right_joints,
@@ -622,6 +637,37 @@ class OpenArmMotionExecutor:
             "ignored_joints": ignored_joints,
             "final_joints": final,
         }
+
+    def _resolve_anchor_joints(
+        self,
+        *,
+        arm: str,
+        joints: dict[str, float],
+        ignore_gripper: bool,
+        ignore_gripper_when_closing: bool,
+    ) -> tuple[dict[str, float], list[str]]:
+        resolved = dict(joints)
+        ignored: list[str] = []
+        if "gripper" not in resolved:
+            return resolved, ignored
+        if ignore_gripper:
+            resolved.pop("gripper", None)
+            ignored.append(f"{arm}.gripper")
+            return resolved, ignored
+        if ignore_gripper_when_closing and self._anchor_gripper_target_is_more_closed(
+            arm=arm,
+            target_gripper=float(resolved["gripper"]),
+        ):
+            resolved.pop("gripper", None)
+            ignored.append(f"{arm}.gripper")
+        return resolved, ignored
+
+    def _anchor_gripper_target_is_more_closed(self, *, arm: str, target_gripper: float) -> bool:
+        current = self.runtime.get_arm_joint_positions(arm)
+        current_gripper = current.get("gripper")
+        if current_gripper is None:
+            return False
+        return float(target_gripper) < float(current_gripper) - 1e-6
 
     def _execute_motion_combo_unlocked(
         self,

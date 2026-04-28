@@ -54,7 +54,7 @@ def test_apply_initial_instruction_to_env_factory_adds_anchor_motion_hints() -> 
     assert "Nanobot Instruction Hints" in prompt
     assert "tomato_dual_locate_ready" in prompt
     assert "safe_standby" in prompt
-    assert "ignore_gripper=True" in prompt
+    assert "ignore_gripper_when_closing=True" in prompt
     assert "avoid perception tools" in updated["cfg"]["multi_turn_prompt"]
 
 
