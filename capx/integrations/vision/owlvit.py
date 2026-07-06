@@ -12,8 +12,10 @@ from capx.utils.serve_utils import post_with_retries
 
 """OWL-ViT integration via FastAPI service."""
 
+import os
+
 # Configuration
-SERVICE_URL = "http://127.0.0.1:8117"
+SERVICE_URL = os.environ.get("CAPX_OWL_VIT_SERVICE_URL", "http://127.0.0.1:8117")
 
 
 def _encode_image(image: np.ndarray | Image.Image) -> str:

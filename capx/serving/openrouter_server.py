@@ -105,12 +105,19 @@ def create_app(api_key: str, base_url: str, async_client: bool = True) -> FastAP
         async def chat_completions(request: ChatCompletionRequest):
             try:
                 client_kwargs = request.model_dump(exclude_none=True)
+                incoming_model = client_kwargs.get("model", "")
 
                 # Strip the "openrouter/" prefix if present so OpenRouter sees the
                 # native model identifier (e.g. "google/gemini-2.5-pro-preview").
-                model = client_kwargs.get("model", "")
-                if model.startswith("openrouter/"):
-                    client_kwargs["model"] = model[len("openrouter/"):]
+                if incoming_model.startswith("openrouter/"):
+                    client_kwargs["model"] = incoming_model[len("openrouter/"):]
+                forwarded_model = client_kwargs.get("model", incoming_model)
+                logger.info(
+                    "OpenRouter proxy request incoming_model=%s forwarded_model=%s stream=%s",
+                    incoming_model,
+                    forwarded_model,
+                    request.stream,
+                )
 
                 if request.stream:
                     client_kwargs["stream"] = True
@@ -141,6 +148,10 @@ def create_app(api_key: str, base_url: str, async_client: bool = True) -> FastAP
                 )
 
             except Exception as e:
+                logger.exception(
+                    "OpenRouter proxy request failed incoming_model=%s",
+                    getattr(request, "model", None),
+                )
                 raise HTTPException(status_code=500, detail=str(e))
 
     else:
@@ -149,10 +160,17 @@ def create_app(api_key: str, base_url: str, async_client: bool = True) -> FastAP
         def chat_completions(request: ChatCompletionRequest):
             try:
                 client_kwargs = request.model_dump(exclude_none=True)
+                incoming_model = client_kwargs.get("model", "")
 
-                model = client_kwargs.get("model", "")
-                if model.startswith("openrouter/"):
-                    client_kwargs["model"] = model[len("openrouter/"):]
+                if incoming_model.startswith("openrouter/"):
+                    client_kwargs["model"] = incoming_model[len("openrouter/"):]
+                forwarded_model = client_kwargs.get("model", incoming_model)
+                logger.info(
+                    "OpenRouter proxy request incoming_model=%s forwarded_model=%s stream=%s",
+                    incoming_model,
+                    forwarded_model,
+                    False,
+                )
 
                 client_kwargs["stream"] = False
 
@@ -172,6 +190,10 @@ def create_app(api_key: str, base_url: str, async_client: bool = True) -> FastAP
                 )
 
             except Exception as e:
+                logger.exception(
+                    "OpenRouter proxy request failed incoming_model=%s",
+                    getattr(request, "model", None),
+                )
                 raise HTTPException(status_code=500, detail=str(e))
 
     @app.get("/health")

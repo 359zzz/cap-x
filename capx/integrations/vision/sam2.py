@@ -13,8 +13,10 @@ from capx.utils.serve_utils import post_with_retries
 
 """SAM 2 integration via FastAPI service."""
 
+import os
+
 # Configuration
-SERVICE_URL = "http://127.0.0.1:8113"
+SERVICE_URL = os.environ.get("CAPX_SAM2_SERVICE_URL", "http://127.0.0.1:8113")
 
 
 def _encode_image(image: np.ndarray | Image.Image) -> str:

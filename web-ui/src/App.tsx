@@ -8,7 +8,7 @@ const FALLBACK_CONFIG = 'env_configs/cube_stack/franka_robosuite_cube_stack.yaml
 
 function App() {
   const trial = useTrialState();
-  const [model, setModel] = useState('google/gemini-3.1-pro-preview');
+  const [model, setModel] = useState('qwen3.6-plus');
   const [serverUrl, setServerUrl] = useState('http://127.0.0.1:8110/chat/completions');
   const [temperature, setTemperature] = useState(1.0);
   const [awaitUserInput, setAwaitUserInput] = useState(true);
@@ -171,6 +171,11 @@ function App() {
               disabled={isRunning}
               className="appearance-none pl-3 pr-7 py-1.5 bg-surface-sunken border border-surface-border rounded-md text-xs font-display text-text-primary focus:outline-none focus:ring-1 focus:ring-accent/40 focus:border-accent/40 disabled:opacity-40 transition-all cursor-pointer"
             >
+              <optgroup label="Qwen">
+                <option value="qwen3.6-plus">Qwen 3.6 Plus</option>
+                <option value="qwen3.5-plus">Qwen 3.5 Plus</option>
+                <option value="qwen3.5-flash">Qwen 3.5 Flash</option>
+              </optgroup>
               <optgroup label="Google">
                 <option value="google/gemini-3.1-pro-preview">Gemini 3.1 Pro Preview</option>
                 <option value="google/gemini-3.1-pro">Gemini 3.1 Pro</option>
