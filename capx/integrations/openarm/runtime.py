@@ -10,12 +10,14 @@ from typing import Any
 
 import numpy as np
 
+from .camera_config import OpenArmCameraCapture, camera_config_from_env
 from .catalog import MAGNITUDE_TO_GRIPPER_FRACTION
 from .driver import (
     BiOpenArmFollower,
     BiOpenArmFollowerConfig,
     OpenArmFollowerConfig,
 )
+from .kinematics import BiOpenArmKinematics
 from .perception_adapter import OpenClawPerceptionConfig, OpenClawServiceAdapter
 
 
@@ -56,6 +58,12 @@ class OpenArmRuntimeConfig:
         else None
     )
     auto_calibrate: bool = _env_flag("CAPX_OPENARM_AUTO_CALIBRATE", False)
+    urdf_path: Path | None = (
+        Path(os.environ["CAPX_OPENARM_URDF"])
+        if os.getenv("CAPX_OPENARM_URDF")
+        else None
+    )
+    enable_cameras: bool = _env_flag("CAPX_OPENARM_CAMERAS_ENABLED", True)
     default_speed: str = os.getenv("CAPX_OPENARM_DEFAULT_SPEED", "slow")
     move_tolerance_deg: float = float(os.getenv("CAPX_OPENARM_MOVE_TOLERANCE_DEG", "3.0"))
     command_timeout_s: float = float(os.getenv("CAPX_OPENARM_COMMAND_TIMEOUT_S", "6.0"))
@@ -187,6 +195,9 @@ class OpenArmRuntime:
         self.config = config or OpenArmRuntimeConfig()
         self.driver = driver or InRepoBiOpenArmDriver(self.config)
         self.perception = perception or OpenClawServiceAdapter(self.config.perception)
+        self.kinematics = BiOpenArmKinematics(self.config.urdf_path)
+        self._camera_captures: dict[str, OpenArmCameraCapture] = {}
+        self._camera_captures_started = False
         self._task_lock = threading.RLock()
         self._task_state = "IDLE"
         self._task_depth = 0
@@ -216,8 +227,10 @@ class OpenArmRuntime:
     def connect(self) -> None:
         if not self.driver.is_connected:
             self.driver.connect(calibrate=self.config.auto_calibrate)
+        self.start_cameras()
 
     def disconnect(self) -> None:
+        self.stop_cameras()
         self.driver.disconnect()
         self._task_depth = 0
         self._task_state = "IDLE"
@@ -225,6 +238,84 @@ class OpenArmRuntime:
     def ensure_connected(self) -> None:
         if not self.driver.is_connected:
             self.connect()
+
+    def start_cameras(self) -> None:
+        """Start configured wrist cameras (idempotent)."""
+        if self._camera_captures_started or not self.config.enable_cameras:
+            return
+        for side in ("left", "right"):
+            cfg = camera_config_from_env(side)
+            if not cfg.device:
+                continue
+            try:
+                cap = OpenArmCameraCapture(cfg)
+                cap.start()
+                self._camera_captures[side] = cap
+            except Exception as exc:
+                # Camera capture is optional; warn but do not fail robot connection.
+                print(f"[OpenArmRuntime] Could not start {side} camera ({cfg.device}): {exc}")
+        self._camera_captures_started = True
+
+    def stop_cameras(self) -> None:
+        """Stop all wrist cameras."""
+        for cap in self._camera_captures.values():
+            try:
+                cap.stop()
+            except Exception:
+                pass
+        self._camera_captures.clear()
+        self._camera_captures_started = False
+
+    def _capture_camera_observations(self, structured: dict[str, Any]) -> dict[str, Any]:
+        """Capture RGB/depth from started cameras and add base-frame poses."""
+        cameras: dict[str, Any] = {}
+        for side, cap in self._camera_captures.items():
+            try:
+                frame = cap.capture()
+                obs = {
+                    "rgb": frame["rgb"],
+                    "depth": frame["depth"],
+                    "intrinsics": frame["intrinsics"],
+                    "T_ee_cam": frame["T_ee_cam"],
+                    "width": frame["width"],
+                    "height": frame["height"],
+                }
+                T_ee_cam = frame["T_ee_cam"]
+                if T_ee_cam is not None and side in ("left", "right"):
+                    kin = self.kinematics.left if side == "left" else self.kinematics.right
+                    if kin.is_available:
+                        joints = self._extract_arm_joint_positions(structured, side)
+                        cam_pose = kin.solve_camera_pose(joints, T_ee_cam)
+                        obs["T_base_cam"] = cam_pose["T_base_cam"]
+                        obs["position"] = cam_pose["position"]
+                        obs["quaternion_xyzw"] = cam_pose["quaternion_xyzw"]
+                cameras[side] = obs
+            except Exception as exc:
+                print(f"[OpenArmRuntime] Failed to capture {side} camera: {exc}")
+                cameras[side] = {"error": str(exc)}
+        return cameras
+
+    def _append_kinematics(self, structured: dict[str, Any]) -> None:
+        """Add FK end-effector poses when kinematics and joints are available."""
+        if not self.kinematics.is_available:
+            return
+        for side in ("left", "right"):
+            joints = self._extract_arm_joint_positions(structured, side)
+            if not joints:
+                continue
+            kin = self.kinematics.left if side == "left" else self.kinematics.right
+            if not kin.is_available:
+                continue
+            try:
+                fk = kin.solve_fk(joints)
+                structured[f"{side}_ee_pose"] = {
+                    "T_base_ee": fk.T_base_ee,
+                    "T_world_ee": fk.T_world_ee,
+                    "position": fk.ee_position,
+                    "quaternion_xyzw": fk.ee_quaternion_xyzw,
+                }
+            except Exception as exc:
+                structured[f"{side}_ee_pose"] = {"error": str(exc)}
 
     def get_robot_state(self) -> dict[str, Any]:
         obs = self.get_observation()
@@ -238,15 +329,22 @@ class OpenArmRuntime:
             "latest_detection": self._latest_detection,
         }
 
-    def get_observation(self) -> dict[str, Any]:
+    def get_observation(self, *, capture_cameras: bool = False) -> dict[str, Any]:
         self.ensure_connected()
         flat_obs = self.driver.get_observation()
         structured = self._structure_observation(flat_obs)
+        if capture_cameras:
+            structured["cameras"] = self._capture_camera_observations(structured)
+        self._append_kinematics(structured)
         structured["latest_detection"] = self._latest_detection
         structured["latest_tactile"] = self._latest_tactile
         structured["task_state"] = self._task_state
         self._last_observation = structured
         return structured
+
+    def get_observation_with_cameras(self) -> dict[str, Any]:
+        """Capture fresh camera frames and return a full observation."""
+        return self.get_observation(capture_cameras=True)
 
     def get_arm_joint_positions(self, arm: str) -> dict[str, float]:
         obs = self.get_observation()

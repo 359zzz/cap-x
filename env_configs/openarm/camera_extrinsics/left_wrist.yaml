@@ -1,0 +1,28 @@
+# Eye-in-hand extrinsics for the left wrist RealSense camera.
+# This file is produced by scripts/calibrate_openarm_handeye.py.
+#
+# Frame convention:
+#   T_ee_cam is the homogeneous transform that maps a point in the camera
+#   optical frame to the openarm_left_ee_base_link frame:
+#       p_ee = T_ee_cam @ p_cam
+#
+# Before calibration this template is the identity; replace it with the output
+# of the calibration script before running visual servoing.
+
+side: left
+camera_mount: wrist
+parent_link: openarm_left_ee_base_link
+T_ee_cam:
+  - [1.0, 0.0, 0.0, 0.0]
+  - [0.0, 1.0, 0.0, 0.0]
+  - [0.0, 0.0, 1.0, 0.0]
+  - [0.0, 0.0, 0.0, 1.0]
+translation_m: [0.0, 0.0, 0.0]
+rotation_matrix:
+  - [1.0, 0.0, 0.0]
+  - [0.0, 1.0, 0.0]
+  - [0.0, 0.0, 1.0]
+calibration_poses: 0
+square_size_m: 0.02
+pattern_size: [9, 6]
+note: TEMPLATE - run scripts/calibrate_openarm_handeye.py --arm left to populate
