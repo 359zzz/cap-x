@@ -11,7 +11,7 @@ from __future__ import annotations
 
 import base64
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -21,10 +21,11 @@ import yaml
 
 @dataclass
 class OpenArmCameraConfig:
-    """Configuration for one OpenArm wrist camera."""
+    """Configuration for one OpenArm camera (wrist or head)."""
 
     name: str = "wrist"
-    side: str = "left"  # "left" or "right"
+    side: str = "left"  # "left", "right", or "head"
+    camera_mount: str = "wrist"  # "wrist" (eye-in-hand) or "head" (body-fixed)
     device: str = "/dev/video0"  # V4L path or RealSense serial number
     backend: str = "auto"  # "auto", "realsense", "v4l"
     width: int = 1280
@@ -32,7 +33,8 @@ class OpenArmCameraConfig:
     fps: int = 30
     intrinsics: np.ndarray | None = None  # (3,3) camera matrix for V4L fallback
     distortion: np.ndarray | None = None  # (5,) or None
-    T_ee_cam: np.ndarray | None = None  # (4,4) eye-in-hand extrinsics
+    T_ee_cam: np.ndarray | None = None  # (4,4) eye-in-hand extrinsics (wrist only)
+    T_base_cam: np.ndarray | None = None  # (4,4) camera pose in base frame (head/wrist)
     # Optional marker size for depth-based point-cloud processing.
     depth_scale: float = 0.001  # RealSense depth in mm by default
 
@@ -43,10 +45,27 @@ class OpenArmCameraConfig:
             self.distortion = np.asarray(self.distortion, dtype=np.float64)
         if self.T_ee_cam is not None:
             self.T_ee_cam = np.asarray(self.T_ee_cam, dtype=np.float64)
+        if self.T_base_cam is not None:
+            self.T_base_cam = np.asarray(self.T_base_cam, dtype=np.float64)
 
 
 def _default_extrinsics_dir() -> Path:
     return Path(__file__).resolve().parents[3] / "env_configs" / "openarm" / "camera_extrinsics"
+
+
+def _load_extrinsics_payload(name: str, extrinsics_dir: Path | str | None = None) -> dict[str, Any]:
+    """Load a camera extrinsics YAML file by its base name (e.g. 'left_wrist', 'head')."""
+    if extrinsics_dir is None:
+        extrinsics_dir = _default_extrinsics_dir()
+    else:
+        extrinsics_dir = Path(extrinsics_dir)
+
+    path = extrinsics_dir / f"{name}.yaml"
+    if not path.is_file():
+        return {}
+
+    with path.open("r", encoding="utf-8") as fh:
+        return yaml.safe_load(fh) or {}
 
 
 def load_camera_extrinsics(side: str, extrinsics_dir: Path | str | None = None) -> np.ndarray | None:
@@ -59,18 +78,7 @@ def load_camera_extrinsics(side: str, extrinsics_dir: Path | str | None = None) 
     Returns:
         (4,4) homogeneous transform, or None if the file does not exist.
     """
-    if extrinsics_dir is None:
-        extrinsics_dir = _default_extrinsics_dir()
-    else:
-        extrinsics_dir = Path(extrinsics_dir)
-
-    path = extrinsics_dir / f"{side}_wrist.yaml"
-    if not path.is_file():
-        return None
-
-    with path.open("r", encoding="utf-8") as fh:
-        payload = yaml.safe_load(fh) or {}
-
+    payload = _load_extrinsics_payload(f"{side}_wrist", extrinsics_dir)
     T = payload.get("T_ee_cam")
     if T is None:
         return None
@@ -89,14 +97,35 @@ def camera_config_from_env(side: str) -> OpenArmCameraConfig:
       * CAPX_OPENARM_CAMERA_EXTRINSICS_DIR
     """
     prefix = f"CAPX_OPENARM_{side.upper()}_CAMERA"
-    device = os.getenv(f"{prefix}_DEVICE", f"/dev/video{2 if side == 'left' else 8}")
+    default_device = {
+        "left": "/dev/video2",
+        "right": "/dev/video8",
+        "head": "/dev/video12",
+    }.get(side, "/dev/video0")
+    device = os.getenv(f"{prefix}_DEVICE", default_device)
     backend = os.getenv(f"{prefix}_BACKEND", "auto")
     width = int(os.getenv(f"{prefix}_WIDTH", "1280"))
     height = int(os.getenv(f"{prefix}_HEIGHT", "720"))
     fps = int(os.getenv(f"{prefix}_FPS", "30"))
 
     extrinsics_dir = os.getenv("CAPX_OPENARM_CAMERA_EXTRINSICS_DIR")
-    T_ee_cam = load_camera_extrinsics(side, extrinsics_dir)
+    is_wrist = side in ("left", "right")
+    camera_mount = "wrist" if is_wrist else "head"
+    name = f"{side}_{camera_mount}"
+
+    payload = _load_extrinsics_payload(name, extrinsics_dir)
+    T_ee_cam = None
+    T_base_cam = None
+    if camera_mount == "wrist":
+        T = payload.get("T_ee_cam")
+        if T is not None:
+            T_ee_cam = np.asarray(T, dtype=np.float64)
+    T_base_yaml = payload.get("T_base_cam")
+    if T_base_yaml is not None:
+        T_base_cam = np.asarray(T_base_yaml, dtype=np.float64)
+    elif T_ee_cam is not None:
+        # Wrist cameras with only eye-in-hand: base pose requires FK at runtime.
+        T_base_cam = None
 
     # A simple V4L fallback intrinsics for 1280x720 RealSense D405/D435 RGB streams.
     intrinsics = None
@@ -108,8 +137,9 @@ def camera_config_from_env(side: str) -> OpenArmCameraConfig:
         ], dtype=np.float64)
 
     return OpenArmCameraConfig(
-        name=f"{side}_wrist",
+        name=name,
         side=side,
+        camera_mount=camera_mount,
         device=device,
         backend=backend,
         width=width,
@@ -118,6 +148,7 @@ def camera_config_from_env(side: str) -> OpenArmCameraConfig:
         intrinsics=intrinsics,
         distortion=None,
         T_ee_cam=T_ee_cam,
+        T_base_cam=T_base_cam,
     )
 
 
@@ -171,12 +202,23 @@ class OpenArmCameraCapture:
           * rgb: (H, W, 3) uint8
           * depth: (H, W) float32 meters, or None if unavailable
           * intrinsics: (3, 3) camera matrix
-          * T_ee_cam: (4, 4) extrinsics, or None
+          * T_ee_cam: (4, 4) eye-in-hand extrinsics, or None
+          * T_base_cam: (4, 4) base-frame pose, or None
+          * quaternion_xyzw: (4,) unit quaternion for T_base_cam, or None
           * width, height
         """
         if self._backend == "realsense":
-            return self._capture_realsense()
-        return self._capture_v4l()
+            frame = self._capture_realsense()
+        else:
+            frame = self._capture_v4l()
+
+        T_base_cam = frame.get("T_base_cam")
+        if T_base_cam is not None:
+            T_base_cam = np.asarray(T_base_cam, dtype=np.float64)
+            frame["quaternion_xyzw"] = _rotation_matrix_to_quaternion_xyzw(T_base_cam[:3, :3])
+        else:
+            frame["quaternion_xyzw"] = None
+        return frame
 
     def _start_realsense(self) -> None:
         rs = self._rs
@@ -217,6 +259,7 @@ class OpenArmCameraCapture:
             "depth": depth.astype(np.float32),
             "intrinsics": K,
             "T_ee_cam": self.config.T_ee_cam,
+            "T_base_cam": self.config.T_base_cam,
             "width": rgb.shape[1],
             "height": rgb.shape[0],
         }
@@ -243,6 +286,7 @@ class OpenArmCameraCapture:
             "depth": None,
             "intrinsics": self.config.intrinsics,
             "T_ee_cam": self.config.T_ee_cam,
+            "T_base_cam": self.config.T_base_cam,
             "width": rgb.shape[1],
             "height": rgb.shape[0],
         }
@@ -255,6 +299,46 @@ def encode_rgb_to_base64_jpeg(rgb: np.ndarray, quality: int = 90) -> str:
     if not ok:
         raise RuntimeError("Failed to encode image as JPEG")
     return base64.b64encode(encoded.tobytes()).decode("ascii")
+
+
+def _rotation_matrix_to_quaternion_xyzw(R: np.ndarray) -> np.ndarray:
+    """Convert a 3x3 rotation matrix to a unit quaternion [x, y, z, w]."""
+    R = np.asarray(R, dtype=np.float64)
+    m00, m01, m02 = R[0]
+    m10, m11, m12 = R[1]
+    m20, m21, m22 = R[2]
+
+    trace = m00 + m11 + m22
+    if trace > 0.0:
+        s = 0.5 / np.sqrt(trace + 1.0)
+        w = 0.25 / s
+        x = (m21 - m12) * s
+        y = (m02 - m20) * s
+        z = (m10 - m01) * s
+    elif m00 > m11 and m00 > m22:
+        s = 2.0 * np.sqrt(1.0 + m00 - m11 - m22)
+        w = (m21 - m12) / s
+        x = 0.25 * s
+        y = (m01 + m10) / s
+        z = (m02 + m20) / s
+    elif m11 > m22:
+        s = 2.0 * np.sqrt(1.0 + m11 - m00 - m22)
+        w = (m02 - m20) / s
+        x = (m01 + m10) / s
+        y = 0.25 * s
+        z = (m12 + m21) / s
+    else:
+        s = 2.0 * np.sqrt(1.0 + m22 - m00 - m11)
+        w = (m10 - m01) / s
+        x = (m02 + m20) / s
+        y = (m12 + m21) / s
+        z = 0.25 * s
+
+    q = np.array([x, y, z, w], dtype=np.float64)
+    norm = np.linalg.norm(q)
+    if norm < 1e-12:
+        return np.array([0.0, 0.0, 0.0, 1.0], dtype=np.float64)
+    return q / norm
 
 
 __all__ = [

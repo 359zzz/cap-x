@@ -1,0 +1,25 @@
+# Extrinsics for the OpenArm head / body-fixed camera.
+#
+# Frame convention:
+#   T_base_cam is the homogeneous transform that maps a point in the camera
+#   optical frame to the openarm_body_link0 (torso/base) frame:
+#       p_base = T_base_cam @ p_cam
+#
+# Unlike wrist cameras, a head camera does NOT move with the arm, so its
+# extrinsics are fixed in the base frame. Calibrate it once (e.g. with a
+# chessboard or AprilTag) and fill in T_base_cam below.
+
+name: head
+camera_mount: head
+parent_link: openarm_body_link0
+T_base_cam:
+  - [1.0, 0.0, 0.0, 0.0]
+  - [0.0, 1.0, 0.0, 0.0]
+  - [0.0, 0.0, 1.0, 0.0]
+  - [0.0, 0.0, 0.0, 1.0]
+translation_m: [0.0, 0.0, 0.0]
+rotation_matrix:
+  - [1.0, 0.0, 0.0]
+  - [0.0, 1.0, 0.0]
+  - [0.0, 0.0, 1.0]
+note: TEMPLATE - fill in T_base_cam after calibrating the head camera

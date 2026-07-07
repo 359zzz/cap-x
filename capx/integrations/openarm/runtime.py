@@ -240,10 +240,10 @@ class OpenArmRuntime:
             self.connect()
 
     def start_cameras(self) -> None:
-        """Start configured wrist cameras (idempotent)."""
+        """Start configured cameras: left/right wrists and optional head (idempotent)."""
         if self._camera_captures_started or not self.config.enable_cameras:
             return
-        for side in ("left", "right"):
+        for side in ("left", "right", "head"):
             cfg = camera_config_from_env(side)
             if not cfg.device:
                 continue
@@ -277,9 +277,15 @@ class OpenArmRuntime:
                     "depth": frame["depth"],
                     "intrinsics": frame["intrinsics"],
                     "T_ee_cam": frame["T_ee_cam"],
+                    "T_base_cam": frame["T_base_cam"],
                     "width": frame["width"],
                     "height": frame["height"],
                 }
+                T_base_cam = frame["T_base_cam"]
+                if T_base_cam is not None:
+                    obs["T_base_cam"] = T_base_cam
+                    obs["position"] = T_base_cam[:3, 3]
+                    obs["quaternion_xyzw"] = frame.get("quaternion_xyzw")
                 T_ee_cam = frame["T_ee_cam"]
                 if T_ee_cam is not None and side in ("left", "right"):
                     kin = self.kinematics.left if side == "left" else self.kinematics.right

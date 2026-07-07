@@ -42,6 +42,7 @@ class OpenArmRealLowLevel(BaseEnv):
         self._record_frames = False
         self._frame_buffer: list[np.ndarray] = []
         self._robotview_camera = os.getenv("CAPX_OPENARM_ROBOTVIEW_CAMERA", "left")
+        self._robotview_fallbacks = ["left", "right", "head"]
 
     def reset(
         self,
@@ -125,15 +126,22 @@ class OpenArmRealLowLevel(BaseEnv):
         return np.asarray(extract(left) + extract(right), dtype=np.float32)
 
     def _build_robotview(self, obs: dict[str, Any]) -> dict[str, Any]:
-        """Build a ``robot0_robotview`` entry from the selected wrist camera."""
+        """Build a ``robot0_robotview`` entry from the selected camera."""
         cameras = obs.get("cameras", {})
         cam = cameras.get(self._robotview_camera)
-        if cam is None or isinstance(cam, dict) and "error" in cam:
-            # Fallback to any available camera.
-            for key, value in cameras.items():
-                if isinstance(value, dict) and "rgb" in value:
+        if cam is None or (isinstance(cam, dict) and "error" in cam):
+            # Fallback through left, right, head.
+            for key in self._robotview_fallbacks:
+                value = cameras.get(key)
+                if isinstance(value, dict) and "rgb" in value and "error" not in value:
                     cam = value
                     break
+            # Final fallback: any camera with rgb.
+            if cam is None:
+                for value in cameras.values():
+                    if isinstance(value, dict) and "rgb" in value and "error" not in value:
+                        cam = value
+                        break
 
         robotview: dict[str, Any] = {}
         if cam is None or not isinstance(cam, dict) or "rgb" not in cam:
